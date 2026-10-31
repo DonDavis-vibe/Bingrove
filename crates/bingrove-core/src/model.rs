@@ -189,6 +189,10 @@ impl Side {
     pub fn letter(self) -> char {
         ['L', 'R', 'V', 'H'][self as usize]
     }
+
+    pub fn german(self) -> &'static str {
+        ["links", "rechts", "vorne", "hinten"][self as usize]
+    }
 }
 
 /// Where the leftover space of an axis goes.

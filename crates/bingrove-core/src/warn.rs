@@ -25,6 +25,38 @@ pub enum Warning {
     HeightUnknown { units: u32 },
 }
 
+impl Warning {
+    /// The warning in German, for a German UI.
+    pub fn german(&self) -> String {
+        match self {
+            Warning::AlignForEdgeZone { axis, centred, one_side } => format!(
+                "{} Ränder von {centred:.1} mm sind zu schmal zum Nutzen; an eine Wand gerückt wird ein Rand von {one_side:.1} mm zur Randzone",
+                if *axis == 0 { "Linker/rechter" } else { "Vorderer/hinterer" }
+            ),
+            Warning::SupportsNeeded => "Aufliegende Randbins kragen aus und brauchen Stützen vom Druckbett".into(),
+            Warning::PlateHeldByBins { sides } => format!(
+                "Die offene Platte berührt die Schubladenwand {} nicht; die Randbins halten sie",
+                sides.iter().map(|s| s.german()).collect::<Vec<_>>().join(" und ")
+            ),
+            Warning::PartTooLarge { part, size } => {
+                format!("{part} ({:.1} × {:.1} mm) passt nicht aufs Druckbett", size[0], size[1])
+            }
+            Warning::ItemTooTall { item, units, max_units } => {
+                format!("{item} braucht {units} Einheiten, die Schublade erlaubt {max_units}")
+            }
+            Warning::ItemUnplaced { item, cells } => {
+                format!("Kein freier Platz von {}×{} Feldern für {item}", cells[0], cells[1])
+            }
+            Warning::HeightUnknown { units } => format!("Schubladenhöhe unbekannt, Bins bekommen {units} Einheiten"),
+        }
+    }
+
+    /// In the given language ("de" or anything else for English).
+    pub fn text(&self, language: &str) -> String {
+        if language.starts_with("de") { self.german() } else { self.to_string() }
+    }
+}
+
 impl std::fmt::Display for Warning {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

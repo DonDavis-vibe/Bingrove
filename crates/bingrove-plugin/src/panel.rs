@@ -472,8 +472,9 @@ impl GuestPanel for DrawerPanel {
                     ),
                     style: meshgrove_plugin_api::ui::TextStyle::Small,
                 });
+                let language = guest::info().language;
                 for w in &p.warnings {
-                    left.push(Node::Notice { level: Level::Warn, text: w.to_string() });
+                    left.push(Node::Notice { level: Level::Warn, text: w.text(&language) });
                 }
                 left.push(Node::row(vec![
                     Node::Button {
