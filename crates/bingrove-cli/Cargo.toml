@@ -1,0 +1,17 @@
+[package]
+name = "bingrove-cli"
+description = "Command line for Bingrove: presets, single bins and tape holders to STL"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "bingrove"
+path = "src/main.rs"
+
+[dependencies]
+bingrove-core.workspace = true
+clap.workspace = true

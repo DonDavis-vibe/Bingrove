@@ -1,0 +1,20 @@
+{
+  "name": "435x330",
+  "description": "Große Schublade: Bin-Sortiment mit 9 Einheiten und Tape-Halter",
+  "plate": { "drawer": [435.0, 330.0], "split": [[5, 5], [4, 3]] },
+  "units": 9,
+  "bins": [
+    { "cells": [1, 1], "units": 9 },
+    { "cells": [1, 2], "units": 9 },
+    { "cells": [2, 2], "units": 9 },
+    { "cells": [1, 3], "units": 9 },
+    { "cells": [2, 3], "units": 9 },
+    { "cells": [2, 1], "units": 9, "dividers": [2, 1] }
+  ],
+  "tape": [
+    { "od": 103.0, "stacks": [2, 1], "height": 2 },
+    { "od": 124.0, "stacks": [1, 1], "height": 2 },
+    { "od": 103.0, "stacks": [2, 1], "height": 3 },
+    { "od": 124.0, "stacks": [1, 1], "height": 3 }
+  ]
+}

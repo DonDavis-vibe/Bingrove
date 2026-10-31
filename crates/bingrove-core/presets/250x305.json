@@ -1,0 +1,29 @@
+{
+  "name": "250x305",
+  "description": "Kleinkram-Schublade, max. 100 mm hoch: vorne niedrige Bins (6 Einheiten), hinten hohe (12 Einheiten)",
+  "plate": {
+    "drawer": [250.0, 305.0],
+    "split": [
+      [3, 2],
+      [4, 3]
+    ]
+  },
+  "units": 6,
+  "placements": [
+    { "x": 0, "y": 5, "cells": [2, 2], "units": 12, "dividers": [1, 1] },
+    { "x": 2, "y": 5, "cells": [2, 2], "units": 12, "dividers": [1, 1] },
+    { "x": 4, "y": 5, "cells": [1, 2], "units": 12, "dividers": [1, 1] },
+    { "x": 0, "y": 0, "cells": [1, 5], "units": 6, "dividers": [1, 1] },
+    { "x": 1, "y": 2, "cells": [2, 3], "units": 6, "dividers": [1, 1] },
+    { "x": 3, "y": 3, "cells": [2, 2], "units": 6, "dividers": [1, 1] },
+    { "x": 3, "y": 2, "cells": [2, 1], "units": 6, "dividers": [2, 1] },
+    { "x": 1, "y": 0, "cells": [1, 1], "units": 6, "dividers": [1, 1] },
+    { "x": 1, "y": 1, "cells": [1, 1], "units": 6, "dividers": [1, 1] },
+    { "x": 2, "y": 0, "cells": [1, 1], "units": 6, "dividers": [1, 1] },
+    { "x": 2, "y": 1, "cells": [1, 1], "units": 6, "dividers": [1, 1] },
+    { "x": 3, "y": 0, "cells": [1, 1], "units": 6, "dividers": [1, 1] },
+    { "x": 3, "y": 1, "cells": [1, 1], "units": 6, "dividers": [1, 1] },
+    { "x": 4, "y": 0, "cells": [1, 1], "units": 6, "dividers": [1, 1] },
+    { "x": 4, "y": 1, "cells": [1, 1], "units": 6, "dividers": [1, 1] }
+  ]
+}

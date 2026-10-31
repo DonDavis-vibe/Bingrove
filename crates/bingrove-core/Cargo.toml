@@ -1,0 +1,24 @@
+[package]
+name = "bingrove-core"
+description = "Planning and geometry of Bingrove's Gridfinity drawer inserts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+manifold-rust = { workspace = true, optional = true }
+zip = { workspace = true, optional = true }
+
+[features]
+default = ["geometry"]
+# Meshes, STL and 3MF; without it only the planning part (types, grid, layout, BOM) is built.
+geometry = ["dep:manifold-rust", "dep:zip"]
+
+[dev-dependencies]
+zip.workspace = true

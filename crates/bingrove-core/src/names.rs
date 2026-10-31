@@ -1,0 +1,94 @@
+//! File names of the parts, German and ASCII like the original script, so existing print lists
+//! and folders keep their names.
+
+use crate::model::{BinSpec, DividerMode, EdgeMode, MagnetMode, Side, TapeSpec};
+
+pub fn baseplate(row: usize, col: usize, cells: [u32; 2], magnets: bool) -> String {
+    let col = char::from(b'A' + col as u8);
+    let mag = if magnets { "_magnete" } else { "" };
+    format!("baseplate_{}{col}_{}x{}{mag}.stl", row + 1, cells[0], cells[1])
+}
+
+pub fn bin(b: &BinSpec) -> String {
+    let [gx, gy] = b.cells;
+    let name = format!("bin_{gx}x{gy}_{}u", b.units);
+    with_options(name, b)
+}
+
+/// A bin reaching into the margins: `randbin_` and the extent per side, e.g. `_L19.25`.
+pub fn edge_bin(b: &BinSpec, extents: [f64; 4], mode: EdgeMode) -> String {
+    if extents.iter().all(|&e| e == 0.0) {
+        return bin(b);
+    }
+    let [gx, gy] = b.cells;
+    let mut name = format!("randbin_{gx}x{gy}_{}u", b.units);
+    for s in Side::ALL {
+        let e = extents[s as usize];
+        if e > 0.0 {
+            name += &format!("_{}{}", s.letter(), mm(e));
+        }
+    }
+    if mode == EdgeMode::Resting {
+        name += "_aufliegend";
+    }
+    with_options(name, b)
+}
+
+/// Millimetres without trailing zeros: 19.25, 19.5, 19.
+fn mm(v: f64) -> String {
+    let s = format!("{v:.2}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+fn with_options(mut name: String, b: &BinSpec) -> String {
+    let [gx, gy] = b.cells;
+    if b.dividers != [1, 1] {
+        name += &format!("_{}x{}fach", b.dividers[0], b.dividers[1]);
+    }
+    if b.divider_mode == DividerMode::Grid {
+        name += "_rasterfach";
+    }
+    if b.label_tab {
+        name += "_label";
+    }
+    if b.scoop > 0 {
+        name += &format!("_mulde{}", b.scoop);
+    }
+    if !b.lip {
+        name += "_ohne_rand";
+    }
+    // A 1x1 bin has only corner holes, so "corners" and "all" are the same part there.
+    match b.magnets {
+        MagnetMode::None => {}
+        MagnetMode::All => name += "_magnete",
+        MagnetMode::Corners if gx * gy == 1 => name += "_magnete",
+        MagnetMode::Corners => name += "_magnete_ecken",
+    }
+    name + ".stl"
+}
+
+pub fn tape(t: &TapeSpec) -> String {
+    let [gx, gy] = t.cells();
+    let n = t.stacks[0] * t.stacks[1];
+    let places = if n > 1 { "plaetze" } else { "platz" };
+    format!("tape_{gx}x{gy}_{n}{places}_{}hoch_bis{}mm.stl", t.height, t.max_roll().floor() as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_match_the_python_script() {
+        assert_eq!(baseplate(0, 1, [2, 4], false), "baseplate_1B_2x4.stl");
+        assert_eq!(baseplate(1, 0, [5, 3], true), "baseplate_2A_5x3_magnete.stl");
+        let b = BinSpec { cells: [2, 1], units: 9, dividers: [2, 1], ..BinSpec::default() };
+        assert_eq!(bin(&b), "bin_2x1_9u_2x1fach.stl");
+        let b = BinSpec { cells: [1, 1], magnets: MagnetMode::Corners, lip: false, ..BinSpec::default() };
+        assert_eq!(bin(&b), "bin_1x1_6u_ohne_rand_magnete.stl");
+        let t = TapeSpec { od: 103.0, stacks: [2, 1], height: 3, ..TapeSpec::default() };
+        assert_eq!(tape(&t), "tape_5x3_2plaetze_3hoch_bis103mm.stl");
+        let t = TapeSpec { od: 124.0, stacks: [1, 1], height: 2, ..TapeSpec::default() };
+        assert_eq!(tape(&t), "tape_3x3_1platz_2hoch_bis124mm.stl");
+    }
+}
