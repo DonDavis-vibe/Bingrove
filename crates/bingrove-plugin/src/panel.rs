@@ -57,6 +57,12 @@ pub(crate) struct DrawerPanel {
     plan: RefCell<Option<Result<Plan, String>>>,
 }
 
+/// Items are named by their front-left cell, so the selection survives re-planning; a moved
+/// bin gets a new id, which the plugin selects itself.
+fn item_id(p: &Placement) -> String {
+    format!("{}_{}", p.x, p.y)
+}
+
 /// Colour of a bin by its height: low bins light, tall bins deep green; holders amber.
 fn colour(units: u32, max: u32, holder: bool) -> String {
     if holder {
@@ -217,8 +223,9 @@ impl DrawerPanel {
         let zones = vec![
             zone(Side::Left, -m(Side::Left), 0.0, m(Side::Left), ny as f32),
             zone(Side::Right, nx as f32, 0.0, m(Side::Right), ny as f32),
-            zone(Side::Front, 0.0, -m(Side::Front), nx as f32, m(Side::Front)),
-            zone(Side::Back, 0.0, ny as f32, nx as f32, m(Side::Back)),
+            // The editor's y runs down the screen: the front zone sits below the grid.
+            zone(Side::Front, 0.0, ny as f32, nx as f32, m(Side::Front)),
+            zone(Side::Back, 0.0, -m(Side::Back), nx as f32, m(Side::Back)),
         ];
         let actions = vec![
             Action { id: "taller".into(), label: "Höher (+1 Einheit)".into() },
@@ -233,8 +240,7 @@ impl DrawerPanel {
         let items = p
             .placements
             .iter()
-            .enumerate()
-            .map(|(i, q)| {
+            .map(|q| {
                 let pl = &q.placement;
                 let [w, d] = pl.cells();
                 let mut badges = vec![format!("{}u", pl.bin.units)];
@@ -245,14 +251,17 @@ impl DrawerPanel {
                     badges.push("↔".into());
                 }
                 GridItem {
-                    id: i.to_string(),
+                    id: item_id(pl),
                     // The grid editor's y runs down the screen; the drawer's front is at the bottom.
                     x: pl.x as f32,
                     y: (ny - pl.y - d) as f32,
                     w: w as f32,
                     h: d as f32,
                     color: Some(colour(pl.bin.units, p.heights.max.min(24), pl.holder.is_some())),
-                    label: pl.label.clone().or_else(|| Some(p.parts[q.part].name.trim_end_matches(".stl").into())),
+                    label: Some(pl.label.clone().unwrap_or_else(|| match &pl.holder {
+                        Some(_) => "Tape".into(),
+                        None => format!("{w}×{d}"),
+                    })),
                     badges,
                     actions: actions.clone(),
                     locked: false,
@@ -313,105 +322,137 @@ impl DrawerPanel {
         self.changed();
     }
 
+    fn select(&self, ids: Vec<String>) {
+        let mut s = self.state.borrow_mut();
+        s.selected_items = ids;
+        s.selected_part = None;
+    }
+
+    /// The placement an item names (by its front-left cell), as an index into the project's
+    /// placements after `adopt_plan`.
+    fn index_of(&self, item: &str) -> Option<usize> {
+        self.with_plan(|p| p.placements.iter().position(|q| item_id(&q.placement) == item)).flatten()
+    }
+
     fn grid_change(&self, change: GridChange) -> Vec<Effect> {
         let ny = self.with_plan(|p| p.grid.cells[1]).unwrap_or(0);
-        let index = |item: &str| item.parse::<usize>().ok();
         // Back to drawer coordinates: the editor's y runs down the screen.
         let to_y = |y: f32, h: f32| (ny as f32 - y - h).round().max(0.0) as u32;
         match change {
             GridChange::Moved { item, x, y } => {
-                if let Some(i) = index(&item) {
+                if let Some(i) = self.index_of(&item) {
+                    let mut moved = String::new();
                     self.edit(i, |p| {
                         let d = p.cells()[1];
                         p.x = x.round().max(0.0) as u32;
                         p.y = to_y(y, d as f32);
+                        moved = item_id(p);
                     });
+                    self.select(vec![moved]);
                 }
             }
             GridChange::Resized { item, x, y, w, h } => {
-                if let Some(i) = index(&item) {
+                if let Some(i) = self.index_of(&item) {
+                    let mut resized = String::new();
                     self.edit(i, |p| {
                         if p.holder.is_none() {
                             p.bin.cells = [w.round().max(1.0) as u32, h.round().max(1.0) as u32];
                         }
                         p.x = x.round().max(0.0) as u32;
                         p.y = to_y(y, p.cells()[1] as f32);
+                        resized = item_id(p);
                     });
+                    self.select(vec![resized]);
                 }
             }
             GridChange::Created { x, y, w, h } => {
                 self.adopt_plan();
                 let units = self.with_plan(|p| p.heights.front).unwrap_or(6);
                 let cells = [w.round().max(1.0) as u32, h.round().max(1.0) as u32];
-                let mut s = self.state.borrow_mut();
-                let bin = BinSpec { cells, units, ..BinSpec::default() };
-                s.project
-                    .placements
-                    .insert(0, Placement::bin(x.round().max(0.0) as u32, to_y(y, cells[1] as f32), bin));
-                drop(s);
+                let created = Placement::bin(
+                    x.round().max(0.0) as u32,
+                    to_y(y, cells[1] as f32),
+                    BinSpec { cells, units, ..BinSpec::default() },
+                );
+                let id = item_id(&created);
+                self.state.borrow_mut().project.placements.insert(0, created);
                 self.changed();
+                self.select(vec![id]);
             }
             GridChange::Deleted { items } => {
+                let mut gone: Vec<usize> = items.iter().filter_map(|i| self.index_of(i)).collect();
                 self.adopt_plan();
-                let mut gone: Vec<usize> = items.iter().filter_map(|i| index(i)).collect();
                 gone.sort_unstable();
-                let mut s = self.state.borrow_mut();
-                for i in gone.into_iter().rev() {
-                    if i < s.project.placements.len() {
-                        s.project.placements.remove(i);
+                gone.dedup();
+                {
+                    let mut s = self.state.borrow_mut();
+                    for i in gone.into_iter().rev() {
+                        if i < s.project.placements.len() {
+                            s.project.placements.remove(i);
+                        }
                     }
                 }
-                drop(s);
                 self.changed();
+                self.select(vec![]);
             }
             GridChange::Merge { items } => {
+                let mut idx: Vec<usize> = items.iter().filter_map(|i| self.index_of(i)).collect();
+                idx.sort_unstable();
+                idx.dedup();
                 self.adopt_plan();
-                let idx: Vec<usize> = items.iter().filter_map(|i| index(i)).collect();
-                let mut s = self.state.borrow_mut();
-                let chosen: Vec<&Placement> = idx.iter().filter_map(|&i| s.project.placements.get(i)).collect();
-                if chosen.len() >= 2 && chosen.iter().all(|p| p.holder.is_none()) {
-                    let x0 = chosen.iter().map(|p| p.x).min().unwrap();
-                    let y0 = chosen.iter().map(|p| p.y).min().unwrap();
-                    let x1 = chosen.iter().map(|p| p.x + p.cells()[0]).max().unwrap();
-                    let y1 = chosen.iter().map(|p| p.y + p.cells()[1]).max().unwrap();
-                    let merged = Placement::bin(x0, y0, BinSpec { cells: [x1 - x0, y1 - y0], ..chosen[0].bin.clone() });
-                    let mut sorted = idx.clone();
-                    sorted.sort_unstable();
-                    for i in sorted.into_iter().rev() {
-                        s.project.placements.remove(i);
+                let merged = {
+                    let s = self.state.borrow();
+                    let chosen: Vec<&Placement> = idx.iter().filter_map(|&i| s.project.placements.get(i)).collect();
+                    (chosen.len() >= 2 && chosen.iter().all(|p| p.holder.is_none())).then(|| {
+                        let x0 = chosen.iter().map(|p| p.x).min().unwrap();
+                        let y0 = chosen.iter().map(|p| p.y).min().unwrap();
+                        let x1 = chosen.iter().map(|p| p.x + p.cells()[0]).max().unwrap();
+                        let y1 = chosen.iter().map(|p| p.y + p.cells()[1]).max().unwrap();
+                        Placement::bin(x0, y0, BinSpec { cells: [x1 - x0, y1 - y0], ..chosen[0].bin.clone() })
+                    })
+                };
+                if let Some(merged) = merged {
+                    let id = item_id(&merged);
+                    {
+                        let mut s = self.state.borrow_mut();
+                        for i in idx.into_iter().rev() {
+                            s.project.placements.remove(i);
+                        }
+                        s.project.placements.insert(0, merged);
                     }
-                    s.project.placements.insert(0, merged);
-                    drop(s);
                     self.changed();
+                    self.select(vec![id]);
                 }
             }
             GridChange::Split { item } => {
-                if let Some(i) = index(&item) {
+                if let Some(i) = self.index_of(&item) {
                     self.adopt_plan();
-                    let mut s = self.state.borrow_mut();
-                    if let Some(p) = s.project.placements.get(i).cloned()
-                        && p.holder.is_none()
-                    {
-                        let [w, d] = p.bin.cells;
-                        s.project.placements.remove(i);
-                        for cx in 0..w {
-                            for cy in 0..d {
-                                let bin = BinSpec { cells: [1, 1], ..p.bin.clone() };
-                                s.project.placements.push(Placement::bin(p.x + cx, p.y + cy, bin));
+                    let split = {
+                        let mut s = self.state.borrow_mut();
+                        match s.project.placements.get(i).cloned() {
+                            Some(p) if p.holder.is_none() => {
+                                let [w, d] = p.bin.cells;
+                                s.project.placements.remove(i);
+                                for cx in 0..w {
+                                    for cy in 0..d {
+                                        let bin = BinSpec { cells: [1, 1], ..p.bin.clone() };
+                                        s.project.placements.push(Placement::bin(p.x + cx, p.y + cy, bin));
+                                    }
+                                }
+                                true
                             }
+                            _ => false,
                         }
-                        drop(s);
+                    };
+                    if split {
                         self.changed();
+                        self.select(vec![]);
                     }
                 }
             }
-            GridChange::Selected { items } => {
-                let mut s = self.state.borrow_mut();
-                s.selected_items = items;
-                s.selected_part = None;
-            }
+            GridChange::Selected { items } => self.select(items),
             GridChange::Action { item, action } => {
-                if let Some(i) = index(&item) {
+                if let Some(i) = self.index_of(&item) {
                     let max = self.with_plan(|p| p.heights.max).unwrap_or(u32::MAX);
                     self.edit(i, |p| match action.as_str() {
                         "taller" => p.bin.units = (p.bin.units + 1).min(max.max(1)),
