@@ -513,9 +513,10 @@ impl GuestPanel for DrawerPanel {
         if s.busy {
             left.push(Node::Progress { fraction: None, text: Some("Teile werden berechnet …".into()) });
         }
+        // The form needs about 380 px; a wider first share keeps its labels readable.
         let root = Node::Split {
             vertical: false,
-            ratio: 0.3,
+            ratio: 0.36,
             first: Box::new(Node::Scroll { max_height: None, children: left }),
             second: Box::new(Node::Split {
                 vertical: false,
