@@ -227,7 +227,9 @@ fn drawer_schema(with_lists: bool) -> Value {
             "properties": {
                 "name": {"type": "string"},
                 "quantity": {"type": "integer", "default": 1},
-                "kind": {"type": "string", "enum": ["object", "bin", "tape"], "description": "object: size [x, y, z] mm of a thing to hold; bin: cells [w, d] and optional units (7 mm each); tape: od (roll diameter), stacks [nx, ny], height (rolls per stack)"},
+                "kind": {"type": "string", "enum": ["object", "bin", "tape", "holder"], "description": "object: size [x, y, z] mm of a thing to hold; bin: cells [w, d] and optional units (7 mm each); tape: od (roll diameter), stacks [nx, ny], height (rolls per stack); holder: a holder from options.holders (holes for batteries/pens, bits, troughs for lying things) with count"},
+                "holder": {"type": "object", "description": "for kind holder: {kind: holes, item: {item: aa|aaa|c|d|cell18650|cell21700|custom, d, h}} or {kind: bits} or {kind: troughs, diameter, length, handle} or {kind: tape, od, stacks, height}"},
+                "count": {"type": "integer", "description": "for kind holder: how many things it must hold; the footprint follows"},
                 "size": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
                 "clearance": {"type": "number", "default": 2},
                 "cells": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
@@ -245,7 +247,8 @@ fn drawer_schema(with_lists: bool) -> Value {
                 "units": {"type": "integer"},
                 "dividers": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
                 "label_tab": {"type": "boolean"}, "scoop": {"type": "integer", "description": "finger scoop in percent, 0 none"},
-                "label": {"type": "string", "description": "what goes in"}
+                "label": {"type": "string", "description": "what goes in"},
+                "cutouts": {"type": "array", "description": "pockets for particular things, cut into a solid insert; see options.cutouts", "items": {"type": "object"}}
             },
             "required": ["x", "y", "cells", "units"]
         }},
@@ -320,7 +323,9 @@ impl Guest for Bingrove {
                         "defaults": PlateOptions::default(),
                         "grid_mm": bingrove_core::spec::GRID,
                         "unit_mm": bingrove_core::spec::UNIT,
-                        "item_kinds": ["object: size [x, y, z] mm", "bin: cells [w, d], units", "tape: od, stacks [nx, ny], height"],
+                        "item_kinds": ["object: size [x, y, z] mm", "bin: cells [w, d], units", "tape: od, stacks [nx, ny], height", "holder: holder {kind: holes|bits|troughs|tape, ...} and count"],
+                        "holders": bingrove_core::catalog::catalog(),
+                        "cutouts": ["box: at [x, y], size [w, d], depth", "cylinder: at [x, y], d, depth", "polygon: points [[x, y], ...], clearance, depth (mm from the bin's front-left corner)"],
                         "limits": {"drawer_mm": [42, 1500], "items": 100, "placements": 300},
                     }),
                     None,
@@ -355,6 +360,18 @@ impl Guest for Bingrove {
                 let (_, bundle, result) = generate(&p.project, p.lists)?;
                 Ok(guest::json(&json!({"bundle": bundle, "result": result})))
             }
+            "calibration" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    #[serde(default)]
+                    profile: Profile,
+                    #[serde(default)]
+                    name: String,
+                }
+                let p: Params = guest::parse(&params)?;
+                let (bundle, result) = calibration(&p.profile, &p.name)?;
+                Ok(guest::json(&json!({"bundle": bundle, "result": result})))
+            }
             _ => Err(PluginError::Invalid(format!("no job {kind:?}"))),
         }
     }
@@ -367,6 +384,40 @@ impl Guest for Bingrove {
         let state = panel::PanelState::from_project(file.project);
         Ok(guest::effects(&[Effect::OpenPanel { panel: "drawer".into(), state: Some(guest::json(&state)) }]))
     }
+}
+
+/// Writes the calibration pieces below `/out/Kalibrierung` and describes them as a bundle.
+pub(crate) fn calibration(profile: &Profile, name: &str) -> Result<(Bundle, Value), PluginError> {
+    let dir = std::path::Path::new("/out/Kalibrierung");
+    let parts = bingrove_core::geom::calibration::parts(profile);
+    let mut files = Vec::new();
+    for (i, part) in parts.iter().enumerate() {
+        guest::host::progress(i as f32 / parts.len() as f32, &part.name);
+        let mesh = part.mesh().map_err(|e| PluginError::Failed(e.to_string()))?;
+        export::save_stl(dir, &part.name, &mesh).map_err(|e| PluginError::Failed(e.to_string()))?;
+        files.push(format!("Kalibrierung/{}", part.name));
+    }
+    let list =
+        if name.trim().is_empty() { "Bingrove Kalibrierung".to_string() } else { format!("{name} – Kalibrierung") };
+    let bundle = Bundle {
+        title: "Bingrove Kalibrierung".into(),
+        summary: Some(format!(
+            "Magnetloch-Leiter {:.1}–{:.1} mm und Passungstest mit {} Bins",
+            profile.magnet.d - 0.3,
+            profile.magnet.d + 0.3,
+            bingrove_core::geom::calibration::FIT_GAPS.len()
+        )),
+        folder: Some("Gridfinity/Kalibrierung".into()),
+        files: files.iter().map(|f| BundleFile { path: f.clone(), tags: vec![], note: None }).collect(),
+        tags: vec!["Gridfinity".into(), "Bingrove".into(), "Kalibrierung".into()],
+        lists: vec![BundleList {
+            name: list,
+            kind: ListKind::Print,
+            items: files.iter().map(|f| BundleItem { path: f.clone(), quantity: 1 }).collect(),
+        }],
+    };
+    let result = json!({"files": files, "profile": profile});
+    Ok((bundle, result))
 }
 
 /// A fresh drawer for the panel.

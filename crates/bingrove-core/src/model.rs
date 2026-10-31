@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::spec::{BIN_SIZE, BP_H, CLEARANCE, FLOOR_Z, GRID, TAPE_ROLL_GAP, TAPE_W, bin_outer};
+use crate::spec::{BIN_SIZE, BP_H, CLEARANCE, FLOOR_Z, GRID, TAPE_ROLL_GAP, TAPE_W, UNIT, bin_outer};
 
 /// Which magnet holes a bin gets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
@@ -29,7 +29,7 @@ pub enum DividerMode {
 }
 
 /// One bin: footprint in cells, height in units, compartments.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BinSpec {
     pub cells: [u32; 2],
@@ -44,6 +44,9 @@ pub struct BinSpec {
     pub label_tab: bool,
     /// Finger scoop along the front wall, in percent of the possible radius (0 = none).
     pub scoop: u8,
+    /// Pockets for particular things, cut into a solid insert that fills the bin to the
+    /// deepest pocket plus a floor.
+    pub cutouts: Vec<Cutout>,
 }
 
 impl Default for BinSpec {
@@ -57,6 +60,7 @@ impl Default for BinSpec {
             magnets: MagnetMode::None,
             label_tab: false,
             scoop: 0,
+            cutouts: vec![],
         }
     }
 }
@@ -104,17 +108,201 @@ impl TapeSpec {
     }
 }
 
+/// Round things that stand in holes: batteries, pens, markers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "item", rename_all = "snake_case")]
+pub enum RoundItem {
+    Aa,
+    Aaa,
+    C,
+    D,
+    Cell18650,
+    Cell21700,
+    /// Anything else: diameter and height in mm.
+    Custom {
+        d: f64,
+        h: f64,
+    },
+}
+
+impl RoundItem {
+    /// Diameter and height.
+    pub fn size(&self) -> (f64, f64) {
+        match self {
+            RoundItem::Aa => (14.5, 50.5),
+            RoundItem::Aaa => (10.5, 44.5),
+            RoundItem::C => (26.2, 50.0),
+            RoundItem::D => (34.2, 61.5),
+            RoundItem::Cell18650 => (18.6, 65.0),
+            RoundItem::Cell21700 => (21.2, 70.0),
+            RoundItem::Custom { d, h } => (*d, *h),
+        }
+    }
+
+    /// For file names.
+    pub fn slug(&self) -> String {
+        match self {
+            RoundItem::Aa => "aa".into(),
+            RoundItem::Aaa => "aaa".into(),
+            RoundItem::C => "c".into(),
+            RoundItem::D => "d".into(),
+            RoundItem::Cell18650 => "18650".into(),
+            RoundItem::Cell21700 => "21700".into(),
+            RoundItem::Custom { d, .. } => format!("d{}", crate::names::mm(*d)),
+        }
+    }
+}
+
+/// Standing round things in a grid of holes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HolesSpec {
+    pub item: RoundItem,
+    pub cells: [u32; 2],
+    /// Height in units; from the item when absent (about half of it stays visible).
+    pub units: Option<u32>,
+    /// Air around each item.
+    pub clearance: f64,
+}
+
+impl Default for HolesSpec {
+    fn default() -> Self {
+        HolesSpec { item: RoundItem::Aa, cells: [1, 1], units: None, clearance: 0.6 }
+    }
+}
+
+/// 1/4" hex bits standing in hex holes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BitsSpec {
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+}
+
+impl Default for BitsSpec {
+    fn default() -> Self {
+        BitsSpec { cells: [1, 1], units: None }
+    }
+}
+
+/// Lying things in troughs across the bin: pens, screwdrivers (shaft and a wider handle).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TroughSpec {
+    /// Diameter of the thing (the shaft, for screwdrivers).
+    pub diameter: f64,
+    /// Length of the thing; it may stick out over the bin.
+    pub length: f64,
+    /// Diameter of a handle at the back, for screwdrivers.
+    pub handle: Option<f64>,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+}
+
+impl Default for TroughSpec {
+    fn default() -> Self {
+        TroughSpec { diameter: 10.0, length: 150.0, handle: None, cells: [3, 1], units: None }
+    }
+}
+
 /// Special holders that replace a plain bin on its cells.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HolderSpec {
     Tape(TapeSpec),
+    Holes(HolesSpec),
+    Bits(BitsSpec),
+    Troughs(TroughSpec),
 }
+
+/// Air around hex bits (across flats) and a 1/4" bit's size.
+pub const BIT_ACROSS_FLATS: f64 = 6.35;
+pub const BIT_CLEARANCE: f64 = 0.3;
+pub const BIT_DEPTH: f64 = 9.0;
 
 impl HolderSpec {
     pub fn cells(&self) -> [u32; 2] {
         match self {
             HolderSpec::Tape(t) => t.cells(),
+            HolderSpec::Holes(h) => h.cells,
+            HolderSpec::Bits(b) => b.cells,
+            HolderSpec::Troughs(t) => t.cells,
+        }
+    }
+
+    /// The holder with another footprint (tape decides its own).
+    pub fn with_cells(mut self, cells: [u32; 2]) -> Self {
+        match &mut self {
+            HolderSpec::Tape(_) => {}
+            HolderSpec::Holes(h) => h.cells = cells,
+            HolderSpec::Bits(b) => b.cells = cells,
+            HolderSpec::Troughs(t) => t.cells = cells,
+        }
+        self
+    }
+
+    /// Height of the holder in units; tape holders have their own height (0).
+    pub fn units(&self) -> u32 {
+        let from_depth = |depth: f64| ((FLOOR_Z + depth + 2.0) / UNIT).ceil().max(2.0) as u32;
+        match self {
+            HolderSpec::Tape(_) => 0,
+            HolderSpec::Holes(h) => h.units.unwrap_or_else(|| from_depth(h.item.size().1 * 0.55)),
+            HolderSpec::Bits(b) => b.units.unwrap_or_else(|| from_depth(BIT_DEPTH)),
+            HolderSpec::Troughs(t) => t.units.unwrap_or_else(|| from_depth(t.handle.unwrap_or(t.diameter) + 1.0)),
+        }
+    }
+
+    /// Outer size of the holder.
+    pub fn size(&self) -> [f64; 3] {
+        let [w, d] = self.cells().map(bin_outer);
+        match self {
+            HolderSpec::Tape(t) => [w, d, FLOOR_Z + crate::spec::TAPE_POST_H + (t.height as f64 - 1.0) * TAPE_W],
+            _ => [w, d, self.units() as f64 * UNIT + crate::spec::LIP_H],
+        }
+    }
+
+    /// For file names.
+    pub fn slug(&self) -> String {
+        match self {
+            HolderSpec::Tape(_) => "tape".into(),
+            HolderSpec::Holes(h) => format!("akku_{}", h.item.slug()),
+            HolderSpec::Bits(_) => "bits".into(),
+            HolderSpec::Troughs(t) => match t.handle {
+                Some(_) => format!("schraubendreher_d{}", crate::names::mm(t.diameter)),
+                None => format!("liegend_d{}", crate::names::mm(t.diameter)),
+            },
+        }
+    }
+}
+
+/// A pocket cut into a bin's solid insert, for one particular thing. Positions are mm from the
+/// bin's outer front-left corner.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "shape", rename_all = "snake_case")]
+pub enum Cutout {
+    /// A rounded box, `at` its centre.
+    Box {
+        at: [f64; 2],
+        size: [f64; 2],
+        depth: f64,
+    },
+    Cylinder {
+        at: [f64; 2],
+        d: f64,
+        depth: f64,
+    },
+    /// An outline (counter-clockwise), grown by `clearance`.
+    Polygon {
+        points: Vec<[f64; 2]>,
+        clearance: f64,
+        depth: f64,
+    },
+}
+
+impl Cutout {
+    pub fn depth(&self) -> f64 {
+        match self {
+            Cutout::Box { depth, .. } | Cutout::Cylinder { depth, .. } | Cutout::Polygon { depth, .. } => *depth,
         }
     }
 }
@@ -379,6 +567,12 @@ pub enum ItemKind {
         clearance: f64,
     },
     Tape(TapeSpec),
+    /// A holder with its own pattern; cells from `count` when the holder's cells are left at 1x1.
+    Holder {
+        holder: HolderSpec,
+        #[serde(default)]
+        count: Option<u32>,
+    },
 }
 
 fn no_dividers() -> [u32; 2] {

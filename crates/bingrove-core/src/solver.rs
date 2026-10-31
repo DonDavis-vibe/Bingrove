@@ -61,6 +61,13 @@ fn wants(items: &[ItemRequest]) -> Vec<Want> {
                     (cells, Some(units), [1, 1], None)
                 }
                 ItemKind::Tape(t) => (t.cells(), Some(0), [1, 1], Some(HolderSpec::Tape(t.clone()))),
+                ItemKind::Holder { holder, count } => {
+                    let holder = match count {
+                        Some(n) => holder.clone().with_cells(crate::catalog::cells_for(holder, *n)),
+                        None => holder.clone(),
+                    };
+                    (holder.cells(), Some(holder.units()), [1, 1], Some(holder))
+                }
             };
             out.push(Want { name: item.name.clone(), cells, units, dividers, holder, order });
         }

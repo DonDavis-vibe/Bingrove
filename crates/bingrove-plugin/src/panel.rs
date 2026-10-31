@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{ListMode, default_project};
+use bingrove_core::catalog::catalog;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -185,6 +186,8 @@ impl DrawerPanel {
                         enabled: true,
                     },
                 ),
+                row("Magnetloch Ø", Node::mm("magnet_d", s.project.profile.magnet.d, 2.0, 12.0)),
+                row("Magnetloch Tiefe", Node::mm("magnet_h", s.project.profile.magnet.h, 0.5, 6.0)),
                 row(
                     "Drucklisten",
                     select(
@@ -236,6 +239,15 @@ impl DrawerPanel {
             Action { id: "label_tab".into(), label: "Label-Lasche an/aus".into() },
             Action { id: "scoop".into(), label: "Griffmulde an/aus".into() },
             Action { id: "edges".into(), label: "Rand nutzen an/aus".into() },
+            Action { id: "holder_none".into(), label: "Halter: keiner (normaler Bin)".into() },
+            Action { id: "holder_aa".into(), label: "Halter: AA-Zellen".into() },
+            Action { id: "holder_aaa".into(), label: "Halter: AAA-Zellen".into() },
+            Action { id: "holder_18650".into(), label: "Halter: 18650-Akkus".into() },
+            Action { id: "holder_bits".into(), label: "Halter: 1/4\"-Bits".into() },
+            Action { id: "holder_pens".into(), label: "Halter: Stifte stehend".into() },
+            Action { id: "holder_pens_lying".into(), label: "Halter: Stifte liegend".into() },
+            Action { id: "holder_screwdrivers".into(), label: "Halter: Schraubendreher".into() },
+            Action { id: "holder_tape".into(), label: "Halter: Tape-Rollen".into() },
         ];
         let items = p
             .placements
@@ -466,6 +478,15 @@ impl DrawerPanel {
                             let all_off = p.edges.off.iter().all(|&o| o);
                             p.edges.off = [!all_off; 4];
                         }
+                        "holder_none" => p.holder = None,
+                        id if id.starts_with("holder_") => {
+                            if let Some(entry) = catalog().into_iter().find(|c| id == format!("holder_{}", c.id)) {
+                                let holder = entry.holder.with_cells(p.cells());
+                                p.bin.cells = holder.cells();
+                                p.bin.units = holder.units();
+                                p.holder = Some(holder);
+                            }
+                        }
                         _ => {}
                     });
                 }
@@ -530,6 +551,12 @@ impl GuestPanel for DrawerPanel {
                         primary: true,
                         enabled: !s.busy,
                     },
+                    Node::Button {
+                        id: "calibrate".into(),
+                        label: "Kalibrierteile".into(),
+                        primary: false,
+                        enabled: !s.busy,
+                    },
                 ]));
                 middle.push(self.grid(&s, p));
                 let key = s.selected_part.map_or("drawer".to_string(), |i| format!("part:{i}"));
@@ -584,6 +611,8 @@ impl GuestPanel for DrawerPanel {
                         ("depth", Some(v)) => s.project.drawer.depth = v,
                         ("height", Some(v)) => s.project.drawer.height = v,
                         ("edge_threshold", Some(v)) => o.edge_threshold = v,
+                        ("magnet_d", Some(v)) => s.project.profile.magnet.d = v,
+                        ("magnet_h", Some(v)) => s.project.profile.magnet.h = v,
                         ("name", _) => s.project.drawer.name = text.unwrap_or_default(),
                         ("edge_mode", _) => {
                             o.edge_mode =
@@ -622,6 +651,19 @@ impl GuestPanel for DrawerPanel {
                 drop(s);
                 self.changed();
                 Vec::new()
+            }
+            Event::Click { id } if id == "calibrate" => {
+                let mut s = self.state.borrow_mut();
+                s.busy = true;
+                let params = json!({"profile": s.project.profile, "name": s.project.drawer.name});
+                vec![Effect::StartJobs {
+                    jobs: vec![JobSpec {
+                        id: "calibration".into(),
+                        kind: "calibration".into(),
+                        params,
+                        label: Some("Kalibrierung".into()),
+                    }],
+                }]
             }
             Event::Click { id } if id == "generate" => {
                 self.adopt_plan();

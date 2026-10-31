@@ -216,6 +216,12 @@ pub fn edge_bin(b: &BinSpec, e: [f64; 4], mode: EdgeMode, rim: f64, p: &Profile)
         .collect();
     solid = subtract(solid, holes);
 
+    let mut solid = translate(&solid, [-x0, -y0, 0.0]);
+    if !b.cutouts.is_empty() {
+        let top = super::insert::insert_top(&b.cutouts, h_body - DIVIDER_GAP);
+        let cuts = b.cutouts.iter().map(|c| super::insert::cutout_solid(c, top, seg)).collect();
+        solid = super::insert::with_pockets(solid, ow, od, top, cuts, seg);
+    }
     let name = crate::names::edge_bin(b, e, mode);
-    Part::new(name, translate(&solid, [-x0, -y0, 0.0]))
+    Part::new(name, solid)
 }

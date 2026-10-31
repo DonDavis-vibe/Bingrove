@@ -2,6 +2,9 @@
 
 pub mod baseplate;
 pub mod bin;
+pub mod calibration;
+pub mod holders;
+pub mod insert;
 pub mod kernel;
 pub mod tape;
 
@@ -46,7 +49,7 @@ pub fn part(plan: &Plan, index: usize, p: &Profile) -> Part {
             part.name = plan.parts[index].name.clone();
             part
         }
-        PartSpec::Tape(t) => tape::tape(t, p),
+        PartSpec::Holder(h) => holders::holder(h, p),
     }
 }
 

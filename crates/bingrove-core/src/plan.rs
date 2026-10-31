@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::grid::{Grid, PlanError, Zone};
 use crate::layout::{Repair, repair, validate};
-use crate::model::{BinSpec, DrawerProject, EdgeMode, HolderSpec, Placement, PlateFloor, Side, TapeSpec};
+use crate::model::{BinSpec, DrawerProject, EdgeMode, HolderSpec, Placement, PlateFloor, Side};
 use crate::solver::{Heights, auto_layout, heights};
 use crate::spec::{BIN_GAP, EDGE_GAP, GRID, LIP_H, bin_outer, body_height};
 use crate::split::{extents, split_plate};
@@ -61,7 +61,7 @@ pub enum PartSpec {
         extents: [f64; 4],
         edge_mode: EdgeMode,
     },
-    Tape(TapeSpec),
+    Holder(HolderSpec),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -186,7 +186,7 @@ fn part_name(part: &PartSpec, pieces: &[PlatePiece], magnets: bool) -> String {
             crate::names::baseplate(p.row, p.col, p.cells, magnets)
         }
         PartSpec::Bin { spec, extents, edge_mode } => crate::names::edge_bin(spec, *extents, *edge_mode),
-        PartSpec::Tape(t) => crate::names::tape(t),
+        PartSpec::Holder(h) => crate::names::holder(h),
     }
 }
 
@@ -245,18 +245,7 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
     let mut out = Vec::with_capacity(placed.len());
     for (p, e) in placed {
         let (part, size, turned) = match &p.holder {
-            Some(HolderSpec::Tape(t)) => {
-                let [w, d] = t.outer();
-                (
-                    PartSpec::Tape(t.clone()),
-                    [
-                        w,
-                        d,
-                        crate::spec::FLOOR_Z + crate::spec::TAPE_POST_H + (t.height as f64 - 1.0) * crate::spec::TAPE_W,
-                    ],
-                    false,
-                )
-            }
+            Some(h) => (PartSpec::Holder(h.clone()), h.size(), false),
             None => {
                 let (ce, turned) = canonical(&p.bin, e);
                 let mode = if ce.iter().any(|&x| x > 0.0) { grid.edge_mode } else { EdgeMode::default() };

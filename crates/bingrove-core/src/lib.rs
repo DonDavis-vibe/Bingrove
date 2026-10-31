@@ -3,6 +3,7 @@
 //! The planning part (types, presets, layout checks, names) builds everywhere; meshes and file
 //! export need the `geometry` feature.
 
+pub mod catalog;
 pub mod grid;
 pub mod layout;
 pub mod model;

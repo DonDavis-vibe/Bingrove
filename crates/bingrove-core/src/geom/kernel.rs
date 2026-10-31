@@ -60,6 +60,79 @@ pub fn swept(w: f64, h: f64, r: f64, profile: &[(f64, f64)], at: (f64, f64), seg
     union(parts).translate(Vec3::new(at.0, at.1, 0.0))
 }
 
+/// A prism over a polygon (counter-clockwise) grown by `offset` with round joins, from z = 0 to `height`.
+pub fn polygon_prism(points: &[[f64; 2]], offset: f64, height: f64, seg: u32) -> Solid {
+    use manifold_rust::cross_section::CrossSection;
+    let pts: Vec<Vec2> = points.iter().map(|p| Vec2::new(p[0], p[1])).collect();
+    let section = CrossSection::new(vec![pts]);
+    let polys = if offset.abs() > 1e-9 {
+        section.offset_with_params(offset, 1, 2.0, seg as i32).to_polygons()
+    } else {
+        section.to_polygons()
+    };
+    Solid::extrude(&polys, height, 0, 0.0, Vec2::new(1.0, 1.0))
+}
+
+/// A hexagonal prism with `across_flats`, one pair of flats along x, standing on z = 0.
+pub fn hex_prism(across_flats: f64, height: f64) -> Solid {
+    let r = across_flats / 3f64.sqrt();
+    let pts: Vec<Vec2> = (0..6)
+        .map(|k| {
+            let a = (k as f64 + 0.5) * std::f64::consts::FRAC_PI_3;
+            Vec2::new(r * a.cos(), r * a.sin())
+        })
+        .collect();
+    Solid::extrude(&vec![pts], height, 0, 0.0, Vec2::new(1.0, 1.0))
+}
+
+/// Digits (and '.') as seven-segment strokes, `height` mm tall, extruded by `depth`; the text
+/// starts at the origin and runs along x. For engraving labels without a font.
+pub fn digits(text: &str, height: f64, depth: f64) -> Solid {
+    let (h, w, t) = (height, height * 0.55, height * 0.16);
+    // Segments a..g as boxes within a w × h cell: (x, y, width, height).
+    let seg = |s: char| -> [f64; 4] {
+        match s {
+            'a' => [0.0, h - t, w, t],
+            'b' => [w - t, h / 2.0, t, h / 2.0],
+            'c' => [w - t, 0.0, t, h / 2.0],
+            'd' => [0.0, 0.0, w, t],
+            'e' => [0.0, 0.0, t, h / 2.0],
+            'f' => [0.0, h / 2.0, t, h / 2.0],
+            _ => [0.0, h / 2.0 - t / 2.0, w, t],
+        }
+    };
+    let on = |c: char| -> &'static str {
+        match c {
+            '0' => "abcdef",
+            '1' => "bc",
+            '2' => "abged",
+            '3' => "abgcd",
+            '4' => "fgbc",
+            '5' => "afgcd",
+            '6' => "afgedc",
+            '7' => "abc",
+            '8' => "abcdefg",
+            '9' => "abcdfg",
+            _ => "",
+        }
+    };
+    let mut parts = Vec::new();
+    let mut x = 0.0;
+    for c in text.chars() {
+        if c == '.' {
+            parts.push(cuboid([t, t, depth], [x, 0.0, 0.0]));
+            x += t * 2.0;
+            continue;
+        }
+        for s in on(c).chars() {
+            let [sx, sy, sw, sh] = seg(s);
+            parts.push(cuboid([sw, sh, depth], [x + sx, sy, 0.0]));
+        }
+        x += w + t * 1.5;
+    }
+    union(parts)
+}
+
 /// Axis-aligned box with its minimum corner at `at`.
 pub fn cuboid(size: [f64; 3], at: [f64; 3]) -> Solid {
     Solid::cube(Vec3::new(size[0], size[1], size[2]), false).translate(Vec3::new(at[0], at[1], at[2]))

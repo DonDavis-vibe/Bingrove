@@ -1,7 +1,7 @@
 //! File names of the parts, German and ASCII like the original script, so existing print lists
 //! and folders keep their names.
 
-use crate::model::{BinSpec, DividerMode, EdgeMode, MagnetMode, Side, TapeSpec};
+use crate::model::{BinSpec, DividerMode, EdgeMode, HolderSpec, MagnetMode, Side, TapeSpec};
 
 pub fn baseplate(row: usize, col: usize, cells: [u32; 2], magnets: bool) -> String {
     let col = char::from(b'A' + col as u8);
@@ -35,7 +35,7 @@ pub fn edge_bin(b: &BinSpec, extents: [f64; 4], mode: EdgeMode) -> String {
 }
 
 /// Millimetres without trailing zeros: 19.25, 19.5, 19.
-fn mm(v: f64) -> String {
+pub fn mm(v: f64) -> String {
     let s = format!("{v:.2}");
     s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
@@ -54,6 +54,9 @@ fn with_options(mut name: String, b: &BinSpec) -> String {
     if b.scoop > 0 {
         name += &format!("_mulde{}", b.scoop);
     }
+    if !b.cutouts.is_empty() {
+        name += &format!("_{}ausschnitt", b.cutouts.len());
+    }
     if !b.lip {
         name += "_ohne_rand";
     }
@@ -65,6 +68,16 @@ fn with_options(mut name: String, b: &BinSpec) -> String {
         MagnetMode::Corners => name += "_magnete_ecken",
     }
     name + ".stl"
+}
+
+pub fn holder(h: &HolderSpec) -> String {
+    match h {
+        HolderSpec::Tape(t) => tape(t),
+        _ => {
+            let [gx, gy] = h.cells();
+            format!("halter_{}_{gx}x{gy}_{}u.stl", h.slug(), h.units())
+        }
+    }
 }
 
 pub fn tape(t: &TapeSpec) -> String {
