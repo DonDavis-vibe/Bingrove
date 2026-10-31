@@ -68,6 +68,22 @@ impl TriMesh {
         !edges.is_empty() && edges.iter().all(|(&(a, b), &n)| n == 1 && edges.get(&(b, a)) == Some(&1))
     }
 
+    /// Turned by 180° about z within its own footprint `size`, so the minimum corner stays put.
+    pub fn turned_180(mut self, size: [f32; 2]) -> Self {
+        for p in &mut self.positions {
+            p[0] = size[0] - p[0];
+            p[1] = size[1] - p[1];
+        }
+        self
+    }
+
+    /// Adds another mesh's triangles.
+    pub fn append(&mut self, other: &TriMesh) {
+        let base = self.positions.len() as u32;
+        self.positions.extend_from_slice(&other.positions);
+        self.indices.extend(other.indices.iter().map(|i| i + base));
+    }
+
     /// The same mesh moved by `v`.
     pub fn translated(mut self, v: [f32; 3]) -> Self {
         for p in &mut self.positions {

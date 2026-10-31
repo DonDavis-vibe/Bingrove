@@ -50,6 +50,29 @@ pub fn part(plan: &Plan, index: usize, p: &Profile) -> Part {
     }
 }
 
+/// The whole drawer as one triangle mesh for a preview: every piece and every bin in place.
+/// No booleans, the parts just sit next to each other.
+pub fn assembly_mesh(plan: &Plan, p: &Profile) -> Result<TriMesh, GeomError> {
+    let parts = all_parts(plan, p);
+    let meshes: Vec<TriMesh> = parts.iter().map(Part::mesh).collect::<Result<_, _>>()?;
+    let mut out = TriMesh::default();
+    for (i, part) in parts.iter().enumerate() {
+        if matches!(plan.parts[i].part, PartSpec::Plate { .. }) {
+            out.append(&meshes[i].clone().translated([part.origin[0] as f32, part.origin[1] as f32, 0.0]));
+        }
+    }
+    for placed in &plan.placements {
+        let mut m = meshes[placed.part].clone();
+        let [x, y, z] = plan.position(placed);
+        if placed.turned {
+            let size = plan.parts[placed.part].size;
+            m = m.turned_180([size[0] as f32, size[1] as f32]);
+        }
+        out.append(&m.translated([x as f32, y as f32, z as f32]));
+    }
+    Ok(out)
+}
+
 /// Every part of the plan, the plate computed once for all its pieces.
 pub fn all_parts(plan: &Plan, p: &Profile) -> Vec<Part> {
     let mut plates = baseplate::pieces_of(&plan.grid, &plan.claims, &plan.pieces, plan.magnets, p).into_iter();

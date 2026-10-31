@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/bingrove-core", "crates/bingrove-cli"]
+# The plugin is a wasm32-wasip2 cdylib with its own lock file; scripts/build.sh builds it.
+exclude = ["crates/bingrove-plugin"]
 
 [workspace.package]
 version = "0.1.0"
