@@ -142,4 +142,8 @@ Funktioniert: Planung, Randbins, Halter, Ausschnitte, Kalibrierung, STL/3MF/Proj
 Plugin-Tools und -Panel. Kommt: Silhouetten-Ausschnitte aus Bibliotheksmodellen (braucht
 Meshgroves `library_read`), ein Browser-Build, weitere Halterarten.
 
-Gridfinity ist von Zack Freedman. Bingrove steht in keiner Verbindung zu ihm oder gridfinity.xyz.
+## Lizenz
+
+MIT oder Apache-2.0 nach Wahl (`LICENSE-MIT`, `LICENSE-APACHE`). Die Gridfinity-Profile folgen
+der veröffentlichten Spezifikation; Gridfinity ist von Zack Freedman, Bingrove steht in keiner
+Verbindung zu ihm oder gridfinity.xyz.

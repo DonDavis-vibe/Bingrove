@@ -139,4 +139,8 @@ Working: planning, edge bins, holders, cutouts, calibration, STL/3MF/project exp
 plugin tools and panel. Coming: silhouette cutouts from library models (needs Meshgrove's
 `library_read`), a browser build, more holder kinds.
 
-Gridfinity is by Zack Freedman. Bingrove is not affiliated with him or with gridfinity.xyz.
+## License
+
+MIT or Apache-2.0, at your option (`LICENSE-MIT`, `LICENSE-APACHE`). The Gridfinity profiles
+follow the published spec; Gridfinity is by Zack Freedman, and Bingrove is not affiliated with
+him or with gridfinity.xyz.

@@ -8,6 +8,7 @@ exclude = ["crates/bingrove-plugin"]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
+license = "MIT OR Apache-2.0"
 authors = ["Davis (German Redneck Engineering)"]
 homepage = "https://redneck-design.de/"
 description = "Gridfinity drawer inserts with edge bins that use the whole drawer"
