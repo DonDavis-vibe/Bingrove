@@ -18,7 +18,8 @@ pub enum Down {
 /// Outline and height of a mesh (flat `positions`, three floats per vertex) with `down` pointing
 /// into the pocket. The outline is counter-clockwise with its minimum corner at the origin.
 pub fn outline(positions: &[f32], down: Down) -> Option<(Vec<[f64; 2]>, f64)> {
-    let pts: Vec<[f64; 3]> = positions.as_chunks::<3>().0.iter().map(|p| [p[0] as f64, p[1] as f64, p[2] as f64]).collect();
+    let pts: Vec<[f64; 3]> =
+        positions.as_chunks::<3>().0.iter().map(|p| [p[0] as f64, p[1] as f64, p[2] as f64]).collect();
     if pts.len() < 3 {
         return None;
     }
