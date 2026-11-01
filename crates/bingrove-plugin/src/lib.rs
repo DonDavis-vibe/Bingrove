@@ -276,7 +276,7 @@ impl Guest for Bingrove {
             description: "Gridfinity drawer inserts that use the whole drawer: baseplate, bins and edge bins planned from the drawer's size, generated as STL and 3MF, put on print lists.".into(),
             authors: vec!["Davis (German Redneck Engineering)".into()],
             homepage: Some("https://github.com/DonDavis-vibe/Bingrove".into()),
-            permissions: vec![Permission::AiTools, Permission::Bundles],
+            permissions: vec![Permission::AiTools, Permission::Bundles, Permission::LibraryRead],
             panels: vec![PanelDef { id: "drawer".into(), title: "Bingrove".into() }],
             file_types: vec![FileType { pattern: "*.gridfinity.json".into(), description: "A Bingrove drawer".into() }],
             memory_mb: Some(2048),
@@ -388,14 +388,14 @@ impl Guest for Bingrove {
 
 /// Writes the calibration pieces below `/out/Kalibrierung` and describes them as a bundle.
 pub(crate) fn calibration(profile: &Profile, name: &str) -> Result<(Bundle, Value), PluginError> {
-    let dir = std::path::Path::new("/out/Kalibrierung");
+    let dir = std::path::Path::new("/out");
     let parts = bingrove_core::geom::calibration::parts(profile);
     let mut files = Vec::new();
     for (i, part) in parts.iter().enumerate() {
         guest::host::progress(i as f32 / parts.len() as f32, &part.name);
         let mesh = part.mesh().map_err(|e| PluginError::Failed(e.to_string()))?;
         export::save_stl(dir, &part.name, &mesh).map_err(|e| PluginError::Failed(e.to_string()))?;
-        files.push(format!("Kalibrierung/{}", part.name));
+        files.push(part.name.clone());
     }
     let list =
         if name.trim().is_empty() { "Bingrove Kalibrierung".to_string() } else { format!("{name} – Kalibrierung") };

@@ -5,9 +5,11 @@
 use std::cell::RefCell;
 
 use bingrove_core::grid::Zone;
-use bingrove_core::model::{Align, BinSpec, DrawerProject, EdgeMode, Placement, PlateFloor, Side};
+use bingrove_core::model::{Align, BinSpec, Cutout, DrawerProject, EdgeMode, HolderSpec, Placement, PlateFloor, Side};
 use bingrove_core::plan::{Plan, plan};
+use bingrove_core::silhouette::{self, Down};
 use bingrove_core::spec::GRID;
+use meshgrove_plugin_api::guest::library;
 use meshgrove_plugin_api::guest::{self, GuestPanel, MeshData};
 use meshgrove_plugin_api::ui::{
     Action, Choice, Effect, Event, FormRow, GridChange, GridEditor, GridItem, GridZone, JobSpec, Level, Node,
@@ -31,6 +33,9 @@ pub(crate) struct PanelState {
     pub selected_items: Vec<String>,
     pub busy: bool,
     pub message: Option<(Level, String)>,
+    /// A library model whose outline the next "Silhouette" action cuts into a bin.
+    pub model_id: String,
+    pub model_down: Down,
 }
 
 impl Default for PanelState {
@@ -43,6 +48,8 @@ impl Default for PanelState {
             selected_items: vec![],
             busy: false,
             message: None,
+            model_id: String::new(),
+            model_down: Down::Z,
         }
     }
 }
@@ -56,6 +63,22 @@ impl PanelState {
 pub(crate) struct DrawerPanel {
     state: RefCell<PanelState>,
     plan: RefCell<Option<Result<Plan, String>>>,
+}
+
+/// A short name of a holder for its grid cell.
+fn holder_label(h: &HolderSpec) -> String {
+    match h {
+        HolderSpec::Tape(_) => "Tape".into(),
+        HolderSpec::Holes(s) => s.item.slug().to_uppercase(),
+        HolderSpec::Bits(_) => "Bits".into(),
+        HolderSpec::Troughs(t) => {
+            if t.handle.is_some() {
+                "Schraubendreher".into()
+            } else {
+                "liegend".into()
+            }
+        }
+    }
 }
 
 /// Items are named by their front-left cell, so the selection survives re-planning; a moved
@@ -189,6 +212,28 @@ impl DrawerPanel {
                 row("Magnetloch Ø", Node::mm("magnet_d", s.project.profile.magnet.d, 2.0, 12.0)),
                 row("Magnetloch Tiefe", Node::mm("magnet_h", s.project.profile.magnet.h, 0.5, 6.0)),
                 row(
+                    "Modell (ID)",
+                    Node::TextInput {
+                        id: "model_id".into(),
+                        value: s.model_id.clone(),
+                        hint: Some("Bibliothek/Ordner/datei.stl – Kontextmenü: Silhouette".into()),
+                        multiline: false,
+                        enabled: true,
+                    },
+                ),
+                row(
+                    "Modell liegt auf",
+                    select(
+                        "model_down",
+                        &[("z", "Unterseite (z unten)"), ("x", "Seite (x unten)"), ("y", "Seite (y unten)")],
+                        match s.model_down {
+                            Down::Z => "z",
+                            Down::X => "x",
+                            Down::Y => "y",
+                        },
+                    ),
+                ),
+                row(
                     "Drucklisten",
                     select(
                         "lists",
@@ -248,6 +293,8 @@ impl DrawerPanel {
             Action { id: "holder_pens_lying".into(), label: "Halter: Stifte liegend".into() },
             Action { id: "holder_screwdrivers".into(), label: "Halter: Schraubendreher".into() },
             Action { id: "holder_tape".into(), label: "Halter: Tape-Rollen".into() },
+            Action { id: "silhouette".into(), label: "Ausschnitt: Silhouette des Modells".into() },
+            Action { id: "cutouts_none".into(), label: "Ausschnitte entfernen".into() },
         ];
         let items = p
             .placements
@@ -271,7 +318,7 @@ impl DrawerPanel {
                     h: d as f32,
                     color: Some(colour(pl.bin.units, p.heights.max.min(24), pl.holder.is_some())),
                     label: Some(pl.label.clone().unwrap_or_else(|| match &pl.holder {
-                        Some(_) => "Tape".into(),
+                        Some(h) => holder_label(h),
                         None => format!("{w}×{d}"),
                     })),
                     badges,
@@ -344,6 +391,60 @@ impl DrawerPanel {
     /// placements after `adopt_plan`.
     fn index_of(&self, item: &str) -> Option<usize> {
         self.with_plan(|p| p.placements.iter().position(|q| item_id(&q.placement) == item)).flatten()
+    }
+
+    /// Cuts the outline of the panel's library model into placement `i`, centred, with 1 mm of air.
+    fn silhouette(&self, i: usize) -> Vec<Effect> {
+        let (id, down) = {
+            let s = self.state.borrow();
+            (s.model_id.trim().to_string(), s.model_down)
+        };
+        if id.is_empty() {
+            return vec![Effect::Toast { text: "Erst eine Modell-ID eintragen".into(), level: Level::Warn }];
+        }
+        let mesh = match library::triangles(&id, 50_000) {
+            Ok(m) => m,
+            Err(e) => return vec![Effect::Toast { text: e, level: Level::Error }],
+        };
+        let Some((points, height)) = silhouette::outline(&mesh.positions, down) else {
+            return vec![Effect::Toast { text: "Das Modell hat keine Fläche".into(), level: Level::Error }];
+        };
+        let size = silhouette::size(&points);
+        let clearance = 1.0;
+        let mut toast = None;
+        self.edit(i, |p| {
+            let [w, d] = p.cells().map(bingrove_core::spec::bin_outer);
+            let inner = [
+                w - 2.0 * bingrove_core::spec::WALL - 2.0 * clearance,
+                d - 2.0 * bingrove_core::spec::WALL - 2.0 * clearance,
+            ];
+            if size[0] > inner[0] || size[1] > inner[1] {
+                toast = Some(format!(
+                    "Das Modell ({:.0} × {:.0} mm) passt nicht in den Bin ({:.0} × {:.0} mm innen)",
+                    size[0], size[1], inner[0], inner[1]
+                ));
+                return;
+            }
+            let shift = [(w - size[0]) / 2.0, (d - size[1]) / 2.0];
+            let points = points.iter().map(|q| [q[0] + shift[0], q[1] + shift[1]]).collect();
+            let max_depth = bingrove_core::spec::body_height(p.bin.units)
+                - bingrove_core::spec::DIVIDER_GAP
+                - bingrove_core::spec::FLOOR_Z
+                - bingrove_core::spec::FLOOR;
+            let depth = (height * 0.7).min(max_depth).max(3.0);
+            p.bin.cutouts.push(Cutout::Polygon { points, clearance, depth });
+            p.holder = None;
+            if p.label.is_none() {
+                p.label = Some(id.rsplit('/').next().unwrap_or(&id).to_string());
+            }
+        });
+        match toast {
+            Some(text) => vec![Effect::Toast { text, level: Level::Warn }],
+            None => vec![Effect::Toast {
+                text: format!("Silhouette {:.0} × {:.0} mm eingetragen", size[0], size[1]),
+                level: Level::Success,
+            }],
+        }
     }
 
     fn grid_change(&self, change: GridChange) -> Vec<Effect> {
@@ -463,6 +564,11 @@ impl DrawerPanel {
                 }
             }
             GridChange::Selected { items } => self.select(items),
+            GridChange::Action { item, action } if action == "silhouette" => {
+                if let Some(i) = self.index_of(&item) {
+                    return self.silhouette(i);
+                }
+            }
             GridChange::Action { item, action } => {
                 if let Some(i) = self.index_of(&item) {
                     let max = self.with_plan(|p| p.heights.max).unwrap_or(u32::MAX);
@@ -479,6 +585,7 @@ impl DrawerPanel {
                             p.edges.off = [!all_off; 4];
                         }
                         "holder_none" => p.holder = None,
+                        "cutouts_none" => p.bin.cutouts.clear(),
                         id if id.starts_with("holder_") => {
                             if let Some(entry) = catalog().into_iter().find(|c| id == format!("holder_{}", c.id)) {
                                 let holder = entry.holder.with_cells(p.cells());
@@ -613,6 +720,14 @@ impl GuestPanel for DrawerPanel {
                         ("edge_threshold", Some(v)) => o.edge_threshold = v,
                         ("magnet_d", Some(v)) => s.project.profile.magnet.d = v,
                         ("magnet_h", Some(v)) => s.project.profile.magnet.h = v,
+                        ("model_id", _) => s.model_id = text.unwrap_or_default(),
+                        ("model_down", _) => {
+                            s.model_down = match text.as_deref() {
+                                Some("x") => Down::X,
+                                Some("y") => Down::Y,
+                                _ => Down::Z,
+                            }
+                        }
                         ("name", _) => s.project.drawer.name = text.unwrap_or_default(),
                         ("edge_mode", _) => {
                             o.edge_mode =

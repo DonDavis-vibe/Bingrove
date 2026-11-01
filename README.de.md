@@ -138,9 +138,9 @@ bis das Crate veröffentlicht ist.
 
 ## Stand
 
-Funktioniert: Planung, Randbins, Halter, Ausschnitte, Kalibrierung, STL/3MF/Projekt-Export, CLI,
-Plugin-Tools und -Panel. Kommt: Silhouetten-Ausschnitte aus Bibliotheksmodellen (braucht
-Meshgroves `library_read`), ein Browser-Build, weitere Halterarten.
+Funktioniert: Planung, Randbins, Halter, Ausschnitte (auch die Silhouette eines Bibliotheksmodells),
+Kalibrierung, STL/3MF/Projekt-Export, CLI, Plugin-Tools und -Panel. Kommt: ein Browser-Build,
+weitere Halterarten, konkave Silhouetten.
 
 ## Lizenz
 

@@ -135,9 +135,9 @@ until that crate is published.
 
 ## Status
 
-Working: planning, edge bins, holders, cutouts, calibration, STL/3MF/project export, CLI,
-plugin tools and panel. Coming: silhouette cutouts from library models (needs Meshgrove's
-`library_read`), a browser build, more holder kinds.
+Working: planning, edge bins, holders, cutouts (including the silhouette of a library model),
+calibration, STL/3MF/project export, CLI, plugin tools and panel. Coming: a browser build, more
+holder kinds, concave silhouettes.
 
 ## License
 

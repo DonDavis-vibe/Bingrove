@@ -11,6 +11,7 @@ pub mod names;
 pub mod plan;
 pub mod presets;
 pub mod profile;
+pub mod silhouette;
 pub mod solver;
 pub mod spec;
 pub mod split;
