@@ -71,11 +71,19 @@ impl Grid {
             margins[2 * axis] = lo;
             margins[2 * axis + 1] = hi;
             origin[axis] = lo;
-            if o.align[axis] == Align::Center && left / 2.0 < o.edge_threshold && left >= o.edge_threshold {
+            let wants_edges = o.edge_mode != EdgeMode::None;
+            if wants_edges
+                && o.align[axis] == Align::Center
+                && left / 2.0 < o.edge_threshold
+                && left >= o.edge_threshold
+            {
                 warnings.push(Warning::AlignForEdgeZone { axis, centred: left / 2.0, one_side: left });
             }
         }
-        let zones = margins.map(|m| if m >= o.edge_threshold { Zone::Edge } else { Zone::Solid });
+        let zones = match o.edge_mode {
+            EdgeMode::None => [Zone::Solid; 4],
+            _ => margins.map(|m| if m >= o.edge_threshold { Zone::Edge } else { Zone::Solid }),
+        };
         let floor = match o.floor {
             PlateFloor::Open => 0.0,
             PlateFloor::Magnets => magnet.h + magnet.floor,
@@ -165,6 +173,18 @@ mod tests {
         let (g, w) = grid(250.0, 305.0, o);
         assert_eq!(g.plate_reach(Side::Left), 19.5);
         assert_eq!(w.last(), Some(&Warning::SupportsNeeded));
+    }
+
+    #[test]
+    fn without_edge_bins_every_margin_stays_solid() {
+        let o = PlateOptions { edge_mode: EdgeMode::None, ..PlateOptions::default() };
+        let (g, w) = grid(250.0, 305.0, o);
+        assert_eq!(g.margins, [19.5, 19.5, 5.0, 5.0]);
+        assert_eq!(g.zones, [Zone::Solid; 4]);
+        assert_eq!(g.plate_reach(Side::Left), 19.5);
+        assert!(!g.cut_back(Side::Left));
+        // Nothing to gain from moving the grid against a wall, so no advice about it.
+        assert!(w.is_empty());
     }
 
     #[test]

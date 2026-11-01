@@ -394,7 +394,7 @@ pub enum Align {
     End,
 }
 
-/// How bins reaching into a wide margin are carried.
+/// Whether bins reach into a wide margin, and how the overhang is carried.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeMode {
@@ -404,6 +404,9 @@ pub enum EdgeMode {
     ToFloor,
     /// The plate keeps its solid margin; the overhang rests on it (needs supports when printing).
     Resting,
+    /// No edge bins: every margin stays solid plate (hollowed from below when wide enough) and
+    /// every bin is a plain 42 n one, whatever the threshold says.
+    None,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

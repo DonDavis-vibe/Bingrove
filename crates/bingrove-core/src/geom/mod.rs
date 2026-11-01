@@ -58,6 +58,12 @@ pub fn part(plan: &Plan, index: usize, p: &Profile) -> Part {
 pub fn assembly_mesh(plan: &Plan, p: &Profile) -> Result<TriMesh, GeomError> {
     let parts = all_parts(plan, p);
     let meshes: Vec<TriMesh> = parts.iter().map(Part::mesh).collect::<Result<_, _>>()?;
+    Ok(assemble(plan, &parts, &meshes))
+}
+
+/// The assembly from meshes already made: `meshes[i]` is the mesh of `parts[i]`, the plan's
+/// parts in order.
+pub fn assemble(plan: &Plan, parts: &[Part], meshes: &[TriMesh]) -> TriMesh {
     let mut out = TriMesh::default();
     for (i, part) in parts.iter().enumerate() {
         if matches!(plan.parts[i].part, PartSpec::Plate { .. }) {
@@ -73,7 +79,7 @@ pub fn assembly_mesh(plan: &Plan, p: &Profile) -> Result<TriMesh, GeomError> {
         }
         out.append(&m.translated([x as f32, y as f32, z as f32]));
     }
-    Ok(out)
+    out
 }
 
 /// Every part of the plan, the plate computed once for all its pieces.

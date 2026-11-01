@@ -16,7 +16,7 @@ use meshgrove_plugin_api::ui::{
     TableColumn, TableRow, View,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{ListMode, default_project};
 use bingrove_core::catalog::catalog;
@@ -36,6 +36,11 @@ pub(crate) struct PanelState {
     /// A library model whose outline the next "Silhouette" action cuts into a bin.
     pub model_id: String,
     pub model_down: Down,
+    /// The preview the 3D view shows (a key into `/data/preview`), the one a job is computing,
+    /// and how far that job is.
+    pub preview: Option<String>,
+    pub preview_job: Option<String>,
+    pub preview_progress: Option<(f32, String)>,
 }
 
 impl Default for PanelState {
@@ -50,6 +55,9 @@ impl Default for PanelState {
             message: None,
             model_id: String::new(),
             model_down: Down::Z,
+            preview: None,
+            preview_job: None,
+            preview_progress: None,
         }
     }
 }
@@ -132,6 +140,78 @@ impl DrawerPanel {
         self.replan();
     }
 
+    /// Keeps the 3D view's preview in step with the plan: one that is already there is shown,
+    /// a missing one is computed by a job. Never here: a panel call has two seconds, a drawer
+    /// takes longer in the sandbox. Runs after every event, so it must not repeat itself.
+    fn preview_effects(&self) -> Vec<Effect> {
+        let Some(wanted) = self.with_plan(|p| crate::preview::key(p, &self.state.borrow().project.profile)) else {
+            return Vec::new();
+        };
+        let mut s = self.state.borrow_mut();
+        let mut effects = Vec::new();
+        if let Some(job) = s.preview_job.clone().filter(|j| *j != wanted) {
+            s.preview_job = None;
+            s.preview_progress = None;
+            effects.push(Effect::CancelJob { job: format!("preview:{job}") });
+        }
+        let shown = s.preview.as_deref() == Some(wanted.as_str()) && crate::preview::ready(&wanted);
+        if shown || s.preview_job.is_some() {
+            return effects;
+        }
+        if crate::preview::ready(&wanted) {
+            s.preview = Some(wanted);
+            s.revision += 1;
+            return effects;
+        }
+        effects.push(Effect::StartJobs {
+            jobs: vec![JobSpec {
+                id: format!("preview:{wanted}"),
+                kind: "preview".into(),
+                params: json!({"project": s.project, "key": wanted}),
+                label: Some("Vorschau".into()),
+            }],
+        });
+        s.preview_job = Some(wanted);
+        effects
+    }
+
+    /// A preview job ended. Results of a job the panel no longer waits for (cancelled,
+    /// overtaken by a change) are ignored.
+    fn preview_finished(&self, key: &str, error: Option<String>) -> Vec<Effect> {
+        let mut s = self.state.borrow_mut();
+        if s.preview_job.as_deref() != Some(key) {
+            return Vec::new();
+        }
+        s.preview_job = None;
+        s.preview_progress = None;
+        match error {
+            None => {
+                s.preview = Some(key.to_owned());
+                s.revision += 1;
+                Vec::new()
+            }
+            Some(e) => vec![Effect::Toast { text: format!("Vorschau fehlgeschlagen: {e}"), level: Level::Warn }],
+        }
+    }
+
+    /// The export or calibration job ended: its bundle goes into the library.
+    fn job_finished(&self, result: Option<Value>, error: Option<String>) -> Vec<Effect> {
+        let mut s = self.state.borrow_mut();
+        s.busy = false;
+        if let Some(error) = error {
+            s.message = Some((Level::Error, error.clone()));
+            return vec![Effect::Toast { text: error, level: Level::Error }];
+        }
+        let bundle = result.map_or(Value::Null, |r| r["bundle"].clone());
+        match serde_json::from_value::<meshgrove_plugin_api::Bundle>(bundle) {
+            Ok(bundle) => {
+                s.message = Some((Level::Success, bundle.summary.clone().unwrap_or_default()));
+                vec![Effect::ApplyBundle { bundle }]
+            }
+            Err(e) => vec![Effect::Toast { text: e.to_string(), level: Level::Error }],
+        }
+    }
+
     fn form(&self, s: &PanelState) -> Node {
         let d = &s.project.drawer;
         let o = &s.project.options;
@@ -171,8 +251,16 @@ impl DrawerPanel {
                     "Randbins",
                     select(
                         "edge_mode",
-                        &[("to_floor", "bis zum Boden (ohne Stützen)"), ("resting", "aufliegend (Stützen nötig)")],
-                        if o.edge_mode == EdgeMode::Resting { "resting" } else { "to_floor" },
+                        &[
+                            ("to_floor", "bis zum Boden (ohne Stützen)"),
+                            ("resting", "aufliegend (Stützen nötig)"),
+                            ("none", "keine – Rand bleibt Platte"),
+                        ],
+                        match o.edge_mode {
+                            EdgeMode::ToFloor => "to_floor",
+                            EdgeMode::Resting => "resting",
+                            EdgeMode::None => "none",
+                        },
                     ),
                 ),
                 row(
@@ -674,6 +762,21 @@ impl GuestPanel for DrawerPanel {
                     height: Some(320.0),
                     bed: s.selected_part.map(|_| [s.project.bed.x as f32, s.project.bed.y as f32]),
                 });
+                if s.preview_job.is_some() {
+                    let (fraction, what) = s.preview_progress.clone().unwrap_or_default();
+                    right.push(Node::Progress {
+                        fraction: Some(fraction),
+                        text: Some(format!("Vorschau wird berechnet … {what}")),
+                    });
+                } else if s.preview.is_none() {
+                    // Without an event at opening nothing could start the job yet.
+                    right.push(Node::Button {
+                        id: "preview".into(),
+                        label: "Vorschau berechnen".into(),
+                        primary: false,
+                        enabled: true,
+                    });
+                }
                 right.push(Node::Label {
                     text: format!("Teile ({} Stück zu drucken)", p.part_count()),
                     style: meshgrove_plugin_api::ui::TextStyle::Strong,
@@ -706,7 +809,7 @@ impl GuestPanel for DrawerPanel {
 
     fn event(&self, event: String) -> String {
         let Ok(event) = serde_json::from_str::<Event>(&event) else { return guest::effects(&[]) };
-        let effects = match event {
+        let mut effects = match event {
             Event::Changed { id, value } => {
                 let num = value.as_f64();
                 let text = value.as_str().map(str::to_owned);
@@ -730,8 +833,11 @@ impl GuestPanel for DrawerPanel {
                         }
                         ("name", _) => s.project.drawer.name = text.unwrap_or_default(),
                         ("edge_mode", _) => {
-                            o.edge_mode =
-                                if text.as_deref() == Some("resting") { EdgeMode::Resting } else { EdgeMode::ToFloor }
+                            o.edge_mode = match text.as_deref() {
+                                Some("resting") => EdgeMode::Resting,
+                                Some("none") => EdgeMode::None,
+                                _ => EdgeMode::ToFloor,
+                            }
                         }
                         ("align_x" | "align_y", _) => {
                             let a = match text.as_deref() {
@@ -801,41 +907,46 @@ impl GuestPanel for DrawerPanel {
                 Vec::new()
             }
             Event::Grid { change, .. } => self.grid_change(change),
-            Event::JobFinished { result: Some(result), .. } => {
-                let mut s = self.state.borrow_mut();
-                s.busy = false;
-                match serde_json::from_value::<meshgrove_plugin_api::Bundle>(result["bundle"].clone()) {
-                    Ok(bundle) => {
-                        s.message = Some((Level::Success, bundle.summary.clone().unwrap_or_default()));
-                        vec![Effect::ApplyBundle { bundle }]
+            Event::JobProgress { job, fraction, message } => {
+                if let Some(key) = job.strip_prefix("preview:") {
+                    let mut s = self.state.borrow_mut();
+                    if s.preview_job.as_deref() == Some(key) {
+                        s.preview_progress = Some((fraction, message));
                     }
-                    Err(e) => vec![Effect::Toast { text: e.to_string(), level: Level::Error }],
                 }
+                Vec::new()
             }
-            Event::JobFinished { error: Some(error), .. } => {
-                let mut s = self.state.borrow_mut();
-                s.busy = false;
-                s.message = Some((Level::Error, error.clone()));
-                vec![Effect::Toast { text: error, level: Level::Error }]
-            }
+            Event::JobFinished { job, result, error } => match job.strip_prefix("preview:") {
+                Some(key) => self.preview_finished(key, error),
+                None => self.job_finished(result, error),
+            },
             Event::HostChanged { .. } => {
                 self.changed();
                 Vec::new()
             }
+            // Among the rest: the "preview" button, which only needs an event to happen.
             _ => Vec::new(),
         };
+        effects.extend(self.preview_effects());
         guest::effects(&effects)
     }
 
     fn mesh(&self, key: String) -> Option<MeshData> {
         let s = self.state.borrow();
-        let profile = s.project.profile.clone();
-        drop(s);
-        self.with_plan(|p| match key.strip_prefix("part:") {
-            Some(i) => i.parse().ok().and_then(|i| crate::preview::part(p, i, &profile)),
-            None => crate::preview::drawer(p, &profile),
-        })
-        .flatten()
+        let preview = s.preview.clone()?;
+        match key.strip_prefix("part:") {
+            // A part by index only from the preview of the current plan; the whole drawer may
+            // stay the earlier one while the job runs.
+            Some(i) => {
+                let i: usize = i.parse().ok()?;
+                let wanted = self.with_plan(|p| crate::preview::key(p, &s.project.profile))?;
+                if wanted != preview {
+                    return None;
+                }
+                crate::preview::read(&preview, Some(i))
+            }
+            None => crate::preview::read(&preview, None),
+        }
         .map(Into::into)
     }
 

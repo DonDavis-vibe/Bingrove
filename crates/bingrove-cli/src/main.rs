@@ -62,8 +62,11 @@ enum Cmd {
         #[arg(long, default_value_t = 10.0)]
         schwelle: f64,
         /// Randbins liegen auf dem Plattenrand statt bis zum Boden zu reichen
-        #[arg(long)]
+        #[arg(long, conflicts_with = "ohne_randbins")]
         aufliegend: bool,
+        /// Keine Randbins: der Rand bleibt Platte, alle Bins sind 42·n
+        #[arg(long)]
+        ohne_randbins: bool,
         /// Raster an eine Wand schieben statt mittig: l, r, v, h (links/rechts/vorne/hinten)
         #[arg(long, value_delimiter = ',')]
         buendig: Vec<String>,
@@ -269,7 +272,17 @@ fn parse_item(s: &str) -> Result<ItemRequest, String> {
 }
 
 fn drawer(cli: Cli) -> Result<(), String> {
-    let Some(Cmd::Drawer { masse, name, items, schwelle, aufliegend, buendig, plan: only_plan, zusammenbau }) = cli.cmd
+    let Some(Cmd::Drawer {
+        masse,
+        name,
+        items,
+        schwelle,
+        aufliegend,
+        ohne_randbins,
+        buendig,
+        plan: only_plan,
+        zusammenbau,
+    }) = cli.cmd
     else {
         unreachable!()
     };
@@ -297,7 +310,11 @@ fn drawer(cli: Cli) -> Result<(), String> {
         options: PlateOptions {
             align,
             edge_threshold: schwelle,
-            edge_mode: if aufliegend { EdgeMode::Resting } else { EdgeMode::ToFloor },
+            edge_mode: match (ohne_randbins, aufliegend) {
+                (true, _) => EdgeMode::None,
+                (false, true) => EdgeMode::Resting,
+                (false, false) => EdgeMode::ToFloor,
+            },
             floor: if cli.magnete.is_some() { PlateFloor::Magnets } else { PlateFloor::Open },
             ..PlateOptions::default()
         },

@@ -41,6 +41,8 @@ Zwei Arten, den Überstand zu tragen:
   gewinnt im Rand 4,75 mm Nutzhöhe.
 - **Aufliegend**: Die Platte behält ihren Rand, der Überstand liegt darauf. Braucht Stützen;
   für Schubladen, in denen die Platte sich selbst festhalten muss.
+- **Keine**: gar keine Randbins. Die Ränder bleiben Platte (ab 8 mm von unten ausgehöhlt), jeder
+  Bin ist ein gewöhnlicher 42·n-Bin, wie im ursprünglichen Script.
 
 Ränder unter einer Schwelle (Standard 10 mm) bleiben fester Plattenrand, damit der Einsatz
 nicht rutscht.

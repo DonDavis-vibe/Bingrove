@@ -40,6 +40,8 @@ Two ways to carry the overhang:
   height in the margin.
 - **Resting**: the plate keeps its margin and the overhang rests on it. Needs supports; for
   drawers where the plate must hold itself tight.
+- **None**: no edge bins at all. The margins stay solid plate (hollowed from below when wide
+  enough) and every bin is a plain 42 n one, as the original script made them.
 
 Margins narrower than a threshold (10 mm by default) stay solid plate, which keeps the insert
 from sliding around.

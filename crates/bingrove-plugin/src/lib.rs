@@ -253,7 +253,7 @@ fn drawer_schema(with_lists: bool) -> Value {
             "required": ["x", "y", "cells", "units"]
         }},
         "edge_threshold": {"type": "number", "description": "margins at least this wide (mm) become edge zones that bins reach into; default 10"},
-        "edge_mode": {"type": "string", "enum": ["to_floor", "resting"], "description": "to_floor (default): edge bins reach the drawer floor, no supports; resting: they rest on the solid plate margin (needs supports)"},
+        "edge_mode": {"type": "string", "enum": ["to_floor", "resting", "none"], "description": "to_floor (default): edge bins reach the drawer floor, no supports; resting: they rest on the solid plate margin (needs supports); none: no edge bins at all, the margins stay solid plate and every bin is 42 n"},
         "align": {"type": "array", "items": {"type": "string", "enum": ["start", "center", "end"]}, "minItems": 2, "maxItems": 2, "description": "where the grid sits along x and y when the leftover is split: center (default), start (left/front wall), end"},
         "magnets": {"type": "boolean", "description": "plate with a floor and magnet holes under every cell corner"},
         "printer": {"type": "string", "description": "one of the user's printers (its bed splits the plate); default the main one"}
@@ -371,6 +371,16 @@ impl Guest for Bingrove {
                 let p: Params = guest::parse(&params)?;
                 let (bundle, result) = calibration(&p.profile, &p.name)?;
                 Ok(guest::json(&json!({"bundle": bundle, "result": result})))
+            }
+            "preview" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    project: DrawerProject,
+                    key: String,
+                }
+                let p: Params = guest::parse(&params)?;
+                let parts = preview::compute(&p.project, &p.key)?;
+                Ok(guest::json(&json!({"key": p.key, "parts": parts})))
             }
             _ => Err(PluginError::Invalid(format!("no job {kind:?}"))),
         }
