@@ -78,7 +78,10 @@ In Meshgrove: *Einstellungen → Plugins* – installieren, „AI-Tools“ und �
 Bibliothek legen“ freigeben – dann *Plugins ▾ → Bingrove*. Das Panel zeigt links das Formular
 der Schublade, in der Mitte den Plan als Raster-Editor (verschieben, Größe ändern,
 zusammenlegen, teilen, Höhen, Fächer, Halter per Kontextmenü), rechts 3D-Vorschau und
-Teileliste. **Generieren + Druckliste** schreibt alles nach `Gridfinity/<Schublade>` in die
+Teileliste. Unter *Fächer* gibst du an, wie viele Fächer du möchtest; Bingrove schlägt die
+gleichmäßigsten Mischungen von Bin-Größen vor, die das Raster füllen („10 × 3×1“,
+„5 × 2×2 + 5 × 2×1“ …), ein Klick belegt die Schublade so, und die Anzahl je Größe lässt sich
+danach verschieben. **Generieren + Druckliste** schreibt alles nach `Gridfinity/<Schublade>` in die
 Bibliothek und legt die Drucklisten `<Schublade> – Teile` (STL mit Stückzahl) und
 `<Schublade> – Druckbetten` (3MF je Bett) an; ein Klick im Verlauf macht es rückgängig.
 

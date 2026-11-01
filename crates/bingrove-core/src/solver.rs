@@ -27,7 +27,7 @@ pub fn heights(drawer_height: f64, grid: &Grid) -> (Heights, Option<Warning>) {
 }
 
 /// First row of the back band: the back third of the grid.
-fn back_row(ny: u32) -> u32 {
+pub(crate) fn back_row(ny: u32) -> u32 {
     ny - (ny / 3).max(1).min(ny)
 }
 

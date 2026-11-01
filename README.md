@@ -75,7 +75,10 @@ scripts/install-into-meshgrove.sh        # copies it into Meshgrove's plugin fol
 In Meshgrove: *Settings → Plugins* — install, grant "AI tools" and "files into the library" —
 then *Plugins ▾ → Bingrove*. The panel has the drawer's form on the left, the plan as a grid
 editor in the middle (move, resize, merge, split, heights, dividers, holders by context menu),
-the 3D preview and parts list on the right. **Generieren + Druckliste** writes everything into
+the 3D preview and parts list on the right. Under *Fächer* you say how many compartments you
+want; Bingrove offers the evenest mixes of bin sizes that tile the grid ("10 × 3×1",
+"5 × 2×2 + 5 × 2×1", …), one click lays the drawer out that way, and the counts per size can
+be shifted afterwards. **Generieren + Druckliste** writes everything into
 `Gridfinity/<drawer>` in the library and makes the print lists `<drawer> – Teile` (STL with
 quantities) and `<drawer> – Druckbetten` (3MF per bed); one click in the history undoes it.
 

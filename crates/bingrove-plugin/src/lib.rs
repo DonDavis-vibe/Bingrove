@@ -50,6 +50,8 @@ pub(crate) struct DrawerArgs {
     pub preset: Option<String>,
     pub items: Vec<bingrove_core::model::ItemRequest>,
     pub placements: Vec<bingrove_core::model::Placement>,
+    /// How many bins the drawer should have; the evenest mix of sizes that fits is laid out.
+    pub bins: Option<u32>,
     pub edge_threshold: Option<f64>,
     pub edge_mode: Option<EdgeMode>,
     pub align: Option<[Align; 2]>,
@@ -97,6 +99,23 @@ impl DrawerArgs {
             ..PlateOptions::default()
         };
         project.bed = bed_of(self.printer.as_deref());
+        if let Some(bins) = self.bins.filter(|b| *b > 0)
+            && project.placements.is_empty()
+            && project.items.is_empty()
+        {
+            let d = &project.drawer;
+            let (grid, _) =
+                bingrove_core::grid::Grid::new([d.width, d.depth], &project.options, &project.profile.magnet)
+                    .map_err(|e| PluginError::Invalid(e.to_string()))?;
+            let (h, _) = bingrove_core::solver::heights(d.height, &grid);
+            let mix = bingrove_core::suggest::suggest(grid.cells, bins, 1).into_iter().next().ok_or_else(|| {
+                PluginError::Invalid(format!(
+                    "no even way to make {bins} bins out of a {} x {} grid; try a number nearby",
+                    grid.cells[0], grid.cells[1]
+                ))
+            })?;
+            project.placements = bingrove_core::suggest::place(grid.cells, &mix, h).unwrap_or_default();
+        }
         Ok(project)
     }
 }
@@ -222,6 +241,7 @@ fn drawer_schema(with_lists: bool) -> Value {
         "depth": {"type": "number", "description": "inner depth in mm (y, front to back)"},
         "height": {"type": "number", "description": "inner height in mm; 0 if unknown (bins then get 6 units)"},
         "preset": {"type": "string", "description": "a known drawer instead of sizes: see options"},
+        "bins": {"type": "integer", "description": "how many compartments (bins) the drawer should have, when nothing else is asked for: the evenest mix of bin sizes that tiles the grid is laid out, tall at the back"},
         "items": {"type": "array", "description": "what should go in; the solver places them (tall at the back) and fills the rest with bins", "items": {
             "type": "object",
             "properties": {

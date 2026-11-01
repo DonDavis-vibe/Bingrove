@@ -15,6 +15,7 @@ pub mod silhouette;
 pub mod solver;
 pub mod spec;
 pub mod split;
+pub mod suggest;
 pub mod text;
 pub mod warn;
 

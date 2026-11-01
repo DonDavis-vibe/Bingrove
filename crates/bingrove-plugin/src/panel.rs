@@ -3,17 +3,19 @@
 //! export job.
 
 use std::cell::RefCell;
+use std::cmp::Ordering;
 
 use bingrove_core::grid::Zone;
 use bingrove_core::model::{Align, BinSpec, Cutout, DrawerProject, EdgeMode, HolderSpec, Placement, PlateFloor, Side};
-use bingrove_core::plan::{Plan, plan};
+use bingrove_core::plan::{PartSpec, Plan, plan};
 use bingrove_core::silhouette::{self, Down};
 use bingrove_core::spec::GRID;
+use bingrove_core::suggest::{self, Mix};
 use meshgrove_plugin_api::guest::library;
 use meshgrove_plugin_api::guest::{self, GuestPanel, MeshData};
 use meshgrove_plugin_api::ui::{
     Action, Choice, Effect, Event, FormRow, GridChange, GridEditor, GridItem, GridZone, JobSpec, Level, Node,
-    TableColumn, TableRow, View,
+    TableColumn, TableRow, TextStyle, Unit, View,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -41,6 +43,10 @@ pub(crate) struct PanelState {
     pub preview: Option<String>,
     pub preview_job: Option<String>,
     pub preview_progress: Option<(f32, String)>,
+    /// How many bins the user asked for (0: not said), and a mix of sizes they typed that does
+    /// not fit yet, with the reason.
+    pub bins_wanted: u32,
+    pub mix_edit: Option<(Mix, String)>,
 }
 
 impl Default for PanelState {
@@ -58,8 +64,18 @@ impl Default for PanelState {
             preview: None,
             preview_job: None,
             preview_progress: None,
+            bins_wanted: 0,
+            mix_edit: None,
         }
     }
+}
+
+/// The bins of a plan as a mix of footprints (holders left out).
+fn bins_of(p: &Plan) -> Mix {
+    Mix::of(p.placements.iter().filter_map(|pl| match &p.parts[pl.part].part {
+        PartSpec::Bin { spec, .. } => Some(spec.cells),
+        _ => None,
+    }))
 }
 
 impl PanelState {
@@ -136,8 +152,62 @@ impl DrawerPanel {
         let mut s = self.state.borrow_mut();
         s.revision += 1;
         s.message = None;
+        s.mix_edit = None;
         drop(s);
         self.replan();
+    }
+
+    /// The mixes offered for the number of bins the user wants (or has).
+    fn mixes(&self, s: &PanelState, p: &Plan) -> Vec<Mix> {
+        let count = if s.bins_wanted > 0 { s.bins_wanted } else { bins_of(p).count() };
+        suggest::suggest(p.grid.cells, count, 4)
+    }
+
+    /// Lays the drawer out with `mix`, replacing every placement; when the mix does not fit, it
+    /// stays in the form with the reason.
+    fn apply_mix(&self, mix: Mix) -> Vec<Effect> {
+        let Some((cells, h)) = self.with_plan(|p| (p.grid.cells, p.heights)) else { return Vec::new() };
+        let area = cells[0] * cells[1];
+        match suggest::place(cells, &mix, h) {
+            Some(placements) => {
+                let mut s = self.state.borrow_mut();
+                s.project.placements = placements;
+                s.project.items.clear();
+                s.selected_items.clear();
+                drop(s);
+                self.changed();
+            }
+            None => {
+                let why = match mix.area().cmp(&area) {
+                    Ordering::Less => format!("{} Zellen bleiben frei", area - mix.area()),
+                    Ordering::Greater => format!("{} Zellen zu viel", mix.area() - area),
+                    Ordering::Equal => "so lassen sich die Größen nicht ins Raster legen".to_string(),
+                };
+                self.state.borrow_mut().mix_edit = Some((mix, why));
+            }
+        }
+        Vec::new()
+    }
+
+    /// The count of one size ("2x1") in the mix form changed.
+    fn mix_changed(&self, size: &str, n: u32) -> Vec<Effect> {
+        let Some((w, d)) = size.split_once('x').and_then(|(w, d)| Some((w.parse().ok()?, d.parse().ok()?))) else {
+            return Vec::new();
+        };
+        let base = match &self.state.borrow().mix_edit {
+            Some((m, _)) => m.clone(),
+            None => self.with_plan(bins_of).unwrap_or_default(),
+        };
+        self.apply_mix(base.with([w, d], n))
+    }
+
+    /// A suggested mix was clicked.
+    fn mix_clicked(&self, index: &str) -> Vec<Effect> {
+        let Ok(i) = index.parse::<usize>() else { return Vec::new() };
+        let s = self.state.borrow();
+        let mix = self.with_plan(|p| self.mixes(&s, p).into_iter().nth(i)).flatten();
+        drop(s);
+        mix.map_or_else(Vec::new, |m| self.apply_mix(m))
     }
 
     /// Keeps the 3D view's preview in step with the plan: one that is already there is shown,
@@ -212,7 +282,7 @@ impl DrawerPanel {
         }
     }
 
-    fn form(&self, s: &PanelState) -> Node {
+    fn form(&self, s: &PanelState, plan: Option<&Plan>) -> Node {
         let d = &s.project.drawer;
         let o = &s.project.options;
         let row = |label: &str, node: Node| FormRow { label: label.into(), node };
@@ -239,7 +309,7 @@ impl DrawerPanel {
                 format!("{} ({:.0} × {:.0} mm)", s.project.bed.name, s.project.bed.x, s.project.bed.y),
             ));
         }
-        Node::Form {
+        let drawer = Node::Form {
             id: "drawer".into(),
             rows: vec![
                 row("Name", Node::text_input("name", d.name.clone())),
@@ -279,6 +349,12 @@ impl DrawerPanel {
                         align(o.align[1]),
                     ),
                 ),
+            ],
+            submit: None,
+        };
+        let magnets = Node::Form {
+            id: "magnets_form".into(),
+            rows: vec![
                 row(
                     "Magnete",
                     Node::Checkbox {
@@ -288,17 +364,14 @@ impl DrawerPanel {
                         enabled: true,
                     },
                 ),
-                row(
-                    "Drucker",
-                    Node::Select {
-                        id: "printer".into(),
-                        options: printers.iter().map(|(v, l)| Choice { value: v.clone(), label: l.clone() }).collect(),
-                        selected: s.project.bed.name.clone(),
-                        enabled: true,
-                    },
-                ),
                 row("Magnetloch Ø", Node::mm("magnet_d", s.project.profile.magnet.d, 2.0, 12.0)),
                 row("Magnetloch Tiefe", Node::mm("magnet_h", s.project.profile.magnet.h, 0.5, 6.0)),
+            ],
+            submit: None,
+        };
+        let model = Node::Form {
+            id: "model".into(),
+            rows: vec![
                 row(
                     "Modell (ID)",
                     Node::TextInput {
@@ -321,6 +394,21 @@ impl DrawerPanel {
                         },
                     ),
                 ),
+            ],
+            submit: None,
+        };
+        let output = Node::Form {
+            id: "output".into(),
+            rows: vec![
+                row(
+                    "Drucker",
+                    Node::Select {
+                        id: "printer".into(),
+                        options: printers.iter().map(|(v, l)| Choice { value: v.clone(), label: l.clone() }).collect(),
+                        selected: s.project.bed.name.clone(),
+                        enabled: true,
+                    },
+                ),
                 row(
                     "Drucklisten",
                     select(
@@ -339,7 +427,82 @@ impl DrawerPanel {
                 ),
             ],
             submit: None,
+        };
+        let group =
+            |title: &str, children: Vec<Node>| Node::Group { title: Some(title.into()), collapsible: true, children };
+        Node::column(vec![
+            drawer,
+            group("Fächer", self.compartments(s, plan)),
+            group("Magnete", vec![magnets]),
+            group("Drucker und Drucklisten", vec![output]),
+            group("Ausschnitt aus einem Modell", vec![model]),
+        ])
+    }
+
+    /// The "Fächer" group: how many bins the user wants, mixes of sizes that make that many, and
+    /// the sizes of the layout with their counts to shift around.
+    fn compartments(&self, s: &PanelState, plan: Option<&Plan>) -> Vec<Node> {
+        let Some(p) = plan else { return Vec::new() };
+        let cells = p.grid.cells;
+        let area = cells[0] * cells[1];
+        let current = bins_of(p);
+        let shown = if s.bins_wanted > 0 { s.bins_wanted } else { current.count() };
+        let count = |id: String, value: u32, min: f64| Node::NumberInput {
+            id,
+            value: f64::from(value),
+            min: Some(min),
+            max: Some(f64::from(area)),
+            step: Some(1.0),
+            unit: Unit::None,
+            decimals: Some(0),
+            enabled: true,
+        };
+        let small = |text: String| Node::Label { text, style: TextStyle::Small };
+        let mut nodes = vec![Node::Form {
+            id: "bins_form".into(),
+            rows: vec![FormRow {
+                label: "Gewünscht".into(),
+                node: Node::row(vec![count("bins".into(), shown, 1.0), small(format!("derzeit {}", current.count()))]),
+            }],
+            submit: None,
+        }];
+        let mixes = self.mixes(s, p);
+        if mixes.is_empty() {
+            nodes.push(small(format!(
+                "Für {shown} Fächer in {} × {} gibt es keine gleichmäßige Aufteilung",
+                cells[0], cells[1]
+            )));
+        } else {
+            nodes.push(small(format!("Vorschläge für {shown} Fächer (ein Klick belegt die Schublade neu):")));
+            for (i, m) in mixes.iter().enumerate() {
+                nodes.push(Node::button(format!("mix:{i}"), m.text()));
+            }
         }
+        // Sizes to shift counts between: those in the layout and those in the suggestions.
+        let edit = s.mix_edit.as_ref().map_or(&current, |(m, _)| m);
+        let mut sizes: Vec<[u32; 2]> = edit.sizes.iter().map(|(c, _)| *c).collect();
+        for c in mixes.iter().flat_map(|m| m.sizes.iter().map(|(c, _)| *c)) {
+            if !sizes.contains(&c) {
+                sizes.push(c);
+            }
+        }
+        sizes.sort_by_key(|c| std::cmp::Reverse((c[0] * c[1], c[0])));
+        let rows = sizes
+            .iter()
+            .map(|&[w, d]| FormRow {
+                label: format!("{w}×{d}"),
+                node: count(format!("mixn:{w}x{d}"), edit.get([w, d]), 0.0),
+            })
+            .collect();
+        nodes.push(Node::Form { id: "mix".into(), rows, submit: None });
+        nodes.push(match &s.mix_edit {
+            Some((m, why)) => Node::Notice {
+                level: Level::Warn,
+                text: format!("{} Fächer, {} von {area} Zellen: {why}", m.count(), m.area()),
+            },
+            None => small(format!("{} Fächer, {area} Zellen; eine Änderung belegt die Schublade neu", current.count())),
+        });
+        nodes
     }
 
     fn grid(&self, s: &PanelState, p: &Plan) -> Node {
@@ -703,7 +866,11 @@ impl GuestPanel for DrawerPanel {
         }
         let s = self.state.borrow();
         let plan = self.plan.borrow();
-        let mut left = vec![Node::heading("Bingrove"), self.form(&s)];
+        let current = match &*plan {
+            Some(Ok(p)) => Some(p),
+            _ => None,
+        };
+        let mut left = vec![Node::heading("Bingrove"), self.form(&s, current)];
         let mut middle = Vec::new();
         let mut right = Vec::new();
         match &*plan {
@@ -810,6 +977,10 @@ impl GuestPanel for DrawerPanel {
     fn event(&self, event: String) -> String {
         let Ok(event) = serde_json::from_str::<Event>(&event) else { return guest::effects(&[]) };
         let mut effects = match event {
+            Event::Changed { id, value } if id.starts_with("mixn:") => {
+                self.mix_changed(&id[5..], value.as_f64().unwrap_or(0.0).max(0.0) as u32)
+            }
+            Event::Click { id } if id.starts_with("mix:") => self.mix_clicked(&id[4..]),
             Event::Changed { id, value } => {
                 let num = value.as_f64();
                 let text = value.as_str().map(str::to_owned);
@@ -821,6 +992,7 @@ impl GuestPanel for DrawerPanel {
                         ("depth", Some(v)) => s.project.drawer.depth = v,
                         ("height", Some(v)) => s.project.drawer.height = v,
                         ("edge_threshold", Some(v)) => o.edge_threshold = v,
+                        ("bins", Some(v)) => s.bins_wanted = v.max(0.0) as u32,
                         ("magnet_d", Some(v)) => s.project.profile.magnet.d = v,
                         ("magnet_h", Some(v)) => s.project.profile.magnet.h = v,
                         ("model_id", _) => s.model_id = text.unwrap_or_default(),
