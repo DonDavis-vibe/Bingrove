@@ -9,7 +9,7 @@ use bingrove_core::grid::Zone;
 use bingrove_core::model::{Align, BinSpec, Cutout, DrawerProject, EdgeMode, HolderSpec, Placement, PlateFloor, Side};
 use bingrove_core::plan::{PartSpec, Plan, plan};
 use bingrove_core::silhouette::{self, Down};
-use bingrove_core::spec::GRID;
+use bingrove_core::spec::{GRID, UNIT};
 use bingrove_core::suggest::{self, Mix};
 use meshgrove_plugin_api::guest::library;
 use meshgrove_plugin_api::guest::{self, GuestPanel, MeshData};
@@ -101,6 +101,30 @@ fn holder_label(h: &HolderSpec) -> String {
             } else {
                 "liegend".into()
             }
+        }
+    }
+}
+
+/// Makes placement `p` the catalogue holder `id` on its cells, or a plain bin for any other id.
+fn set_holder(p: &mut Placement, id: &str) {
+    match catalog().into_iter().find(|c| c.id == id) {
+        Some(entry) => {
+            let holder = entry.holder.with_cells(p.cells());
+            p.bin.cells = holder.cells();
+            p.bin.units = holder.units();
+            p.holder = Some(holder);
+        }
+        None => p.holder = None,
+    }
+}
+
+/// The catalogue id of a placement's holder: "none" for a plain bin, "custom" for a holder the
+/// catalogue does not have (an AI's own sizes).
+fn holder_id(p: &Placement) -> &'static str {
+    match &p.holder {
+        None => "none",
+        Some(h) => {
+            catalog().into_iter().find(|c| c.holder.clone().with_cells(h.cells()) == *h).map_or("custom", |c| c.id)
         }
     }
 }
@@ -638,6 +662,138 @@ impl DrawerPanel {
         s.selected_part = None;
     }
 
+    /// Applies `f` to every selected placement.
+    fn edit_selected(&self, mut f: impl FnMut(&mut Placement)) {
+        let ids = self.state.borrow().selected_items.clone();
+        for id in ids {
+            if let Some(i) = self.index_of(&id) {
+                self.edit(i, &mut f);
+            }
+        }
+    }
+
+    /// A control of the selected bins changed: `field` is the id without "sel_".
+    fn selected_changed(&self, field: &str, value: Value) -> Vec<Effect> {
+        let max = self.with_plan(|p| p.heights.max).unwrap_or(u32::MAX).max(1);
+        let n = value.as_f64().map(|v| v.round().max(0.0) as u32);
+        let on = value.as_bool();
+        let text = value.as_str().map(|t| t.trim().to_owned());
+        match (field, n, on, text) {
+            ("units", Some(n), ..) => self.edit_selected(|p| p.bin.units = n.clamp(1, max)),
+            ("div_x", Some(n), ..) => self.edit_selected(|p| p.bin.dividers[0] = n.clamp(1, 12)),
+            ("div_y", Some(n), ..) => self.edit_selected(|p| p.bin.dividers[1] = n.clamp(1, 12)),
+            ("label_tab", _, Some(on), _) => self.edit_selected(|p| p.bin.label_tab = on),
+            ("scoop", _, Some(on), _) => self.edit_selected(|p| p.bin.scoop = if on { 60 } else { 0 }),
+            ("edges", _, Some(on), _) => self.edit_selected(|p| p.edges.off = [!on; 4]),
+            ("label", _, _, Some(t)) => self.edit_selected(|p| p.label = (!t.is_empty()).then(|| t.clone())),
+            ("holder", _, _, Some(id)) => self.edit_selected(|p| set_holder(p, &id)),
+            _ => {}
+        }
+        Vec::new()
+    }
+
+    /// The selected bins' settings under the grid: what the context menu does, as controls.
+    fn selected_form(&self, s: &PanelState, p: &Plan) -> Option<Node> {
+        let chosen: Vec<&Placement> = s
+            .selected_items
+            .iter()
+            .filter_map(|id| p.placements.iter().find(|q| item_id(&q.placement) == *id))
+            .map(|q| &q.placement)
+            .collect();
+        let first = *chosen.first()?;
+        let [w, d] = first.cells();
+        let title = match chosen.len() {
+            1 => format!("Fach {w}×{d} in Spalte {}, Reihe {} von vorne", first.x + 1, first.y + 1),
+            n => format!("{n} Fächer ausgewählt (Werte des ersten, Änderungen für alle)"),
+        };
+        let int = |id: &str, value: u32, min: u32, max: u32| Node::NumberInput {
+            id: id.into(),
+            value: f64::from(value),
+            min: Some(f64::from(min)),
+            max: Some(f64::from(max)),
+            step: Some(1.0),
+            unit: Unit::None,
+            decimals: Some(0),
+            enabled: true,
+        };
+        let check = |id: &str, label: &str, on: bool| Node::Checkbox {
+            id: id.into(),
+            label: label.into(),
+            checked: on,
+            enabled: true,
+        };
+        let small = |text: String| Node::Label { text, style: TextStyle::Small };
+        let row = |label: &str, node: Node| FormRow { label: label.into(), node };
+        let plain = first.holder.is_none();
+        let mut rows = vec![row(
+            "Höhe",
+            Node::row(vec![
+                int("sel_units", first.bin.units, 1, p.heights.max.max(1)),
+                small(format!("Einheiten = {:.0} mm", f64::from(first.bin.units) * UNIT)),
+            ]),
+        )];
+        if plain {
+            rows.push(row(
+                "Fächer quer × längs",
+                Node::row(vec![
+                    int("sel_div_x", first.bin.dividers[0], 1, 12),
+                    int("sel_div_y", first.bin.dividers[1], 1, 12),
+                ]),
+            ));
+            let mut extras = vec![
+                check("sel_label_tab", "Label-Lasche", first.bin.label_tab),
+                check("sel_scoop", "Griffmulde", first.bin.scoop > 0),
+            ];
+            if p.grid.zones.contains(&Zone::Edge) {
+                extras.push(check("sel_edges", "Rand nutzen", !first.edges.off.iter().all(|&o| o)));
+            }
+            rows.push(row("Ausstattung", Node::row(extras)));
+        }
+        if chosen.len() == 1 {
+            rows.push(row(
+                "Beschriftung",
+                Node::TextInput {
+                    id: "sel_label".into(),
+                    value: first.label.clone().unwrap_or_default(),
+                    hint: Some("Name im Plan".into()),
+                    multiline: false,
+                    enabled: true,
+                },
+            ));
+        }
+        let holder = holder_id(first);
+        let mut options = vec![Choice { value: "none".into(), label: "keiner (normaler Bin)".into() }];
+        options.extend(catalog().iter().map(|c| Choice { value: c.id.into(), label: c.label.into() }));
+        if holder == "custom" {
+            options.push(Choice { value: "custom".into(), label: "eigener Halter".into() });
+        }
+        rows.push(row(
+            "Halter",
+            Node::Select { id: "sel_holder".into(), options, selected: holder.into(), enabled: true },
+        ));
+        if plain {
+            let n = first.bin.cutouts.len();
+            rows.push(row(
+                "Ausschnitte",
+                Node::row(vec![
+                    small(if n == 0 { "keine".into() } else { n.to_string() }),
+                    Node::button("sel_silhouette", "Silhouette des Modells"),
+                    Node::Button {
+                        id: "sel_cutouts_none".into(),
+                        label: "entfernen".into(),
+                        primary: false,
+                        enabled: n > 0,
+                    },
+                ]),
+            ));
+        }
+        Some(Node::Group {
+            title: Some(title),
+            collapsible: false,
+            children: vec![Node::Form { id: "selected".into(), rows, submit: None }],
+        })
+    }
+
     /// The placement an item names (by its front-left cell), as an index into the project's
     /// placements after `adopt_plan`.
     fn index_of(&self, item: &str) -> Option<usize> {
@@ -835,16 +991,8 @@ impl DrawerPanel {
                             let all_off = p.edges.off.iter().all(|&o| o);
                             p.edges.off = [!all_off; 4];
                         }
-                        "holder_none" => p.holder = None,
                         "cutouts_none" => p.bin.cutouts.clear(),
-                        id if id.starts_with("holder_") => {
-                            if let Some(entry) = catalog().into_iter().find(|c| id == format!("holder_{}", c.id)) {
-                                let holder = entry.holder.with_cells(p.cells());
-                                p.bin.cells = holder.cells();
-                                p.bin.units = holder.units();
-                                p.holder = Some(holder);
-                            }
-                        }
+                        id if id.starts_with("holder_") => set_holder(p, &id[7..]),
                         _ => {}
                     });
                 }
@@ -921,6 +1069,13 @@ impl GuestPanel for DrawerPanel {
                     },
                 ]));
                 middle.push(self.grid(&s, p));
+                match self.selected_form(&s, p) {
+                    Some(form) => middle.push(form),
+                    None => middle.push(Node::Label {
+                        text: "Ein Fach anklicken, um es hier einzustellen; Rechtsklick für das Menü.".into(),
+                        style: TextStyle::Small,
+                    }),
+                }
                 let key = s.selected_part.map_or("drawer".to_string(), |i| format!("part:{i}"));
                 right.push(Node::MeshView {
                     id: "preview".into(),
@@ -967,7 +1122,7 @@ impl GuestPanel for DrawerPanel {
             second: Box::new(Node::Split {
                 vertical: false,
                 ratio: 0.55,
-                first: Box::new(Node::column(middle)),
+                first: Box::new(Node::Scroll { max_height: None, children: middle }),
                 second: Box::new(Node::Scroll { max_height: None, children: right }),
             }),
         };
@@ -981,6 +1136,18 @@ impl GuestPanel for DrawerPanel {
                 self.mix_changed(&id[5..], value.as_f64().unwrap_or(0.0).max(0.0) as u32)
             }
             Event::Click { id } if id.starts_with("mix:") => self.mix_clicked(&id[4..]),
+            Event::Changed { id, value } if id.starts_with("sel_") => self.selected_changed(&id[4..], value),
+            Event::Click { id } if id == "sel_silhouette" => {
+                let first = self.state.borrow().selected_items.first().cloned();
+                match first.and_then(|id| self.index_of(&id)) {
+                    Some(i) => self.silhouette(i),
+                    None => Vec::new(),
+                }
+            }
+            Event::Click { id } if id == "sel_cutouts_none" => {
+                self.edit_selected(|p| p.bin.cutouts.clear());
+                Vec::new()
+            }
             Event::Changed { id, value } => {
                 let num = value.as_f64();
                 let text = value.as_str().map(str::to_owned);
