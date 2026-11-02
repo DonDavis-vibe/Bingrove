@@ -6,7 +6,9 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 
 use bingrove_core::grid::Zone;
-use bingrove_core::model::{Align, BinSpec, Cutout, DrawerProject, EdgeMode, HolderSpec, Placement, PlateFloor, Side};
+use bingrove_core::model::{
+    Align, BinSpec, Cutout, DrawerProject, EdgeMode, HolderSpec, Placement, PlateFloor, RoundItem, Side,
+};
 use bingrove_core::plan::{PartSpec, Plan, plan};
 use bingrove_core::silhouette::{self, Down};
 use bingrove_core::spec::{GRID, UNIT};
@@ -14,7 +16,7 @@ use bingrove_core::suggest::{self, Mix};
 use meshgrove_plugin_api::guest::library;
 use meshgrove_plugin_api::guest::{self, GuestPanel, MeshData};
 use meshgrove_plugin_api::ui::{
-    Action, Choice, Effect, Event, FormRow, GridChange, GridEditor, GridItem, GridZone, JobSpec, Level, Node,
+    Action, Choice, Effect, Event, FormRow, GridChange, GridEditor, GridItem, GridZone, JobSpec, Level, Node, Tab,
     TableColumn, TableRow, TextStyle, Unit, View,
 };
 use serde::{Deserialize, Serialize};
@@ -47,6 +49,8 @@ pub(crate) struct PanelState {
     /// not fit yet, with the reason.
     pub bins_wanted: u32,
     pub mix_edit: Option<(Mix, String)>,
+    /// The left column's tab: 0 Projekt, 1 Belegung, 2 Ausgabe.
+    pub tab: usize,
 }
 
 impl Default for PanelState {
@@ -66,6 +70,7 @@ impl Default for PanelState {
             preview_progress: None,
             bins_wanted: 0,
             mix_edit: None,
+            tab: 0,
         }
     }
 }
@@ -115,6 +120,38 @@ fn set_holder(p: &mut Placement, id: &str) {
             p.holder = Some(holder);
         }
         None => p.holder = None,
+    }
+}
+
+/// The holder fields of the selection form ("sel_" stripped), all numbers.
+const HOLDER_FIELDS: [&str; 10] =
+    ["hole_d", "hole_h", "clear", "trough_d", "trough_len", "handle", "tape_od", "tape_h", "tape_sx", "tape_sy"];
+
+/// Sets one holder field of placement `p`; a changed hole size makes the item a custom one.
+fn holder_field(p: &mut Placement, field: &str, v: f64) {
+    match (&mut p.holder, field) {
+        (Some(HolderSpec::Holes(h)), "hole_d" | "hole_h") => {
+            let (d, height) = h.item.size();
+            h.item = if field == "hole_d" {
+                RoundItem::Custom { d: v.max(1.0), h: height }
+            } else {
+                RoundItem::Custom { d, h: v.max(5.0) }
+            };
+        }
+        (Some(HolderSpec::Holes(h)), "clear") => h.clearance = v.clamp(0.0, 5.0),
+        (Some(HolderSpec::Troughs(t)), "trough_d") => t.diameter = v.max(2.0),
+        (Some(HolderSpec::Troughs(t)), "trough_len") => t.length = v.max(20.0),
+        (Some(HolderSpec::Troughs(t)), "handle") => t.handle = (v > 0.0).then_some(v),
+        (Some(HolderSpec::Tape(t)), "tape_od") => t.od = v.max(30.0),
+        (Some(HolderSpec::Tape(t)), "tape_h") => t.height = (v.round() as u32).clamp(1, 10),
+        (Some(HolderSpec::Tape(t)), "tape_sx") => t.stacks[0] = (v.round() as u32).clamp(1, 6),
+        (Some(HolderSpec::Tape(t)), "tape_sy") => t.stacks[1] = (v.round() as u32).clamp(1, 6),
+        _ => {}
+    }
+    // Tape decides its own footprint and height from the rolls.
+    if let Some(h) = &p.holder {
+        p.bin.cells = h.cells();
+        p.bin.units = h.units();
     }
 }
 
@@ -376,49 +413,17 @@ impl DrawerPanel {
             ],
             submit: None,
         };
-        let magnets = Node::Form {
-            id: "magnets_form".into(),
-            rows: vec![
-                row(
-                    "Magnete",
-                    Node::Checkbox {
-                        id: "magnets".into(),
-                        label: "Boden mit Magnetlöchern".into(),
-                        checked: o.floor == PlateFloor::Magnets,
-                        enabled: true,
-                    },
-                ),
-                row("Magnetloch Ø", Node::mm("magnet_d", s.project.profile.magnet.d, 2.0, 12.0)),
-                row("Magnetloch Tiefe", Node::mm("magnet_h", s.project.profile.magnet.h, 0.5, 6.0)),
-            ],
-            submit: None,
-        };
-        let model = Node::Form {
-            id: "model".into(),
-            rows: vec![
-                row(
-                    "Modell (ID)",
-                    Node::TextInput {
-                        id: "model_id".into(),
-                        value: s.model_id.clone(),
-                        hint: Some("Bibliothek/Ordner/datei.stl – Kontextmenü: Silhouette".into()),
-                        multiline: false,
-                        enabled: true,
-                    },
-                ),
-                row(
-                    "Modell liegt auf",
-                    select(
-                        "model_down",
-                        &[("z", "Unterseite (z unten)"), ("x", "Seite (x unten)"), ("y", "Seite (y unten)")],
-                        match s.model_down {
-                            Down::Z => "z",
-                            Down::X => "x",
-                            Down::Y => "y",
-                        },
-                    ),
-                ),
-            ],
+        let plate = Node::Form {
+            id: "plate".into(),
+            rows: vec![row(
+                "Platte",
+                Node::Checkbox {
+                    id: "magnets".into(),
+                    label: "Boden mit Magnetlöchern".into(),
+                    checked: o.floor == PlateFloor::Magnets,
+                    enabled: true,
+                },
+            )],
             submit: None,
         };
         let output = Node::Form {
@@ -449,18 +454,21 @@ impl DrawerPanel {
                         },
                     ),
                 ),
+                row("Magnetloch Ø", Node::mm("magnet_d", s.project.profile.magnet.d, 2.0, 12.0)),
+                row("Magnetloch Tiefe", Node::mm("magnet_h", s.project.profile.magnet.h, 0.5, 6.0)),
             ],
             submit: None,
         };
-        let group =
-            |title: &str, children: Vec<Node>| Node::Group { title: Some(title.into()), collapsible: true, children };
-        Node::column(vec![
-            drawer,
-            group("Fächer", self.compartments(s, plan)),
-            group("Magnete", vec![magnets]),
-            group("Drucker und Drucklisten", vec![output]),
-            group("Ausschnitt aus einem Modell", vec![model]),
-        ])
+        let tab = |label: &str, children: Vec<Node>| Tab { label: label.into(), children };
+        Node::Tabs {
+            id: "left_tabs".into(),
+            selected: s.tab.min(2),
+            tabs: vec![
+                tab("Projekt", vec![drawer, plate]),
+                tab("Belegung", self.compartments(s, plan)),
+                tab("Ausgabe", vec![output]),
+            ],
+        }
     }
 
     /// The "Fächer" group: how many bins the user wants, mixes of sizes that make that many, and
@@ -674,6 +682,12 @@ impl DrawerPanel {
 
     /// A control of the selected bins changed: `field` is the id without "sel_".
     fn selected_changed(&self, field: &str, value: Value) -> Vec<Effect> {
+        if let Some(v) = value.as_f64()
+            && HOLDER_FIELDS.contains(&field)
+        {
+            self.edit_selected(|p| holder_field(p, field, v));
+            return Vec::new();
+        }
         let max = self.with_plan(|p| p.heights.max).unwrap_or(u32::MAX).max(1);
         let n = value.as_f64().map(|v| v.round().max(0.0) as u32);
         let on = value.as_bool();
@@ -771,7 +785,56 @@ impl DrawerPanel {
             "Halter",
             Node::Select { id: "sel_holder".into(), options, selected: holder.into(), enabled: true },
         ));
+        match &first.holder {
+            Some(HolderSpec::Holes(h)) => {
+                let (dia, height) = h.item.size();
+                rows.push(row("Loch Ø", Node::mm("sel_hole_d", dia, 1.0, 80.0)));
+                rows.push(row("Höhe des Dings", Node::mm("sel_hole_h", height, 5.0, 300.0)));
+                rows.push(row("Spiel je Loch", Node::mm("sel_clear", h.clearance, 0.0, 5.0)));
+            }
+            Some(HolderSpec::Troughs(t)) => {
+                rows.push(row("Durchmesser", Node::mm("sel_trough_d", t.diameter, 2.0, 60.0)));
+                rows.push(row("Länge", Node::mm("sel_trough_len", t.length, 20.0, 600.0)));
+                rows.push(row("Griff Ø (0 = ohne)", Node::mm("sel_handle", t.handle.unwrap_or(0.0), 0.0, 60.0)));
+            }
+            Some(HolderSpec::Tape(t)) => {
+                rows.push(row("Rollen-Ø", Node::mm("sel_tape_od", t.od, 30.0, 200.0)));
+                rows.push(row(
+                    "Stapel quer × längs",
+                    Node::row(vec![int("sel_tape_sx", t.stacks[0], 1, 6), int("sel_tape_sy", t.stacks[1], 1, 6)]),
+                ));
+                rows.push(row("Rollen übereinander", int("sel_tape_h", t.height, 1, 10)));
+            }
+            Some(HolderSpec::Bits(_)) | None => {}
+        }
         if plain {
+            rows.push(row(
+                "Modell (ID)",
+                Node::TextInput {
+                    id: "model_id".into(),
+                    value: s.model_id.clone(),
+                    hint: Some("Bibliothek/Ordner/datei.stl für die Silhouette".into()),
+                    multiline: false,
+                    enabled: true,
+                },
+            ));
+            rows.push(row(
+                "Modell liegt auf",
+                Node::Select {
+                    id: "model_down".into(),
+                    options: [("z", "Unterseite (z unten)"), ("x", "Seite (x unten)"), ("y", "Seite (y unten)")]
+                        .iter()
+                        .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
+                        .collect(),
+                    selected: match s.model_down {
+                        Down::Z => "z",
+                        Down::X => "x",
+                        Down::Y => "y",
+                    }
+                    .into(),
+                    enabled: true,
+                },
+            ));
             let n = first.bin.cutouts.len();
             rows.push(row(
                 "Ausschnitte",
@@ -1136,6 +1199,10 @@ impl GuestPanel for DrawerPanel {
                 self.mix_changed(&id[5..], value.as_f64().unwrap_or(0.0).max(0.0) as u32)
             }
             Event::Click { id } if id.starts_with("mix:") => self.mix_clicked(&id[4..]),
+            Event::Changed { id, value } if id == "left_tabs" => {
+                self.state.borrow_mut().tab = value.as_u64().unwrap_or(0) as usize;
+                Vec::new()
+            }
             Event::Changed { id, value } if id.starts_with("sel_") => self.selected_changed(&id[4..], value),
             Event::Click { id } if id == "sel_silhouette" => {
                 let first = self.state.borrow().selected_items.first().cloned();
