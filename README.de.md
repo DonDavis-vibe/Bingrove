@@ -56,9 +56,19 @@ nicht rutscht.
   Zylinder, Polygon).
 - **Randbins** an jeder Seite, auch in Ecken.
 - **Halter**: Tape-Rollen auf Ringdornen, Akkus (AA, AAA, C, D, 18650, 21700, eigenes Maß),
-  1/4"-Bits, Stifte stehend oder liegend, Schraubendreher in Rinnen mit breiterer Griffmulde.
-- **Kalibrierteile**: eine Magnetloch-Leiter mit eingravierten Durchmessern und ein
-  Passungstest mit drei Bins unterschiedlicher Luft, um einen Drucker einzustellen.
+  1/4"-Bits, Stifte stehend oder liegend, Schraubendreher in Rinnen mit breiterer Griffmulde;
+  Lochraster mit eigenem Durchmesser, Tiefe, Teilung, Anzahl und Form (rund, Sechskant,
+  quadratisch) für Fräserschäfte, Bohrer und Ähnliches; **Lochreihen mit eigenen Größen**, jede
+  Größe vor ihrem Loch graviert, mit Sätzen zum Laden (Nüsse 1/4", 3/8", 1/2" metrisch und
+  zöllig, Inbus, Bohrer, Schraubendreher stehend) und gestuften Reihen; **Schlitze** für Karten,
+  Swatches, Knopfzellen und Sägeblätter.
+- **Gravur**: eine Strichschrift (Hershey Simplex) schreibt Text in die Label-Lasche oder die
+  Frontwand eines Bins und Titel auf Halter.
+- **Flächen**: eine Platte für Werkbank oder Tisch, die das Raster selbst ist, Zellen bleiben
+  frei, wo nichts steht; mit festem Boden, gesenkten M4-Schraublöchern und
+  Schwalbenschwanz-Verbindern zwischen den Teilen.
+- **Kalibrierteile**: eine Magnetloch-Leiter mit eingravierten Durchmessern, ein Passungstest
+  mit drei Bins unterschiedlicher Luft und ein Verbinder-Paar, um einen Drucker einzustellen.
 - **Ausgabe**: eine STL je Teileart mit Stückzahl, 3MF-Dateien mit den Teilen pro Druckbett
   angeordnet, der Zusammenbau als 3MF zum Anschauen und eine `*.gridfinity.json`-Projektdatei,
   die die Schublade wieder öffnet.
@@ -75,13 +85,15 @@ scripts/install-into-meshgrove.sh        # kopiert es in Meshgroves Plugin-Ordne
 ```
 
 In Meshgrove: *Einstellungen → Plugins* – installieren, „AI-Tools“ und „Dateien in die
-Bibliothek legen“ freigeben – dann *Plugins ▾ → Bingrove*. Das Panel zeigt links das Formular
-der Schublade, in der Mitte den Plan als Raster-Editor (verschieben, Größe ändern,
-zusammenlegen, teilen, Höhen, Fächer, Halter per Kontextmenü), rechts 3D-Vorschau und
-Teileliste. Unter *Fächer* gibst du an, wie viele Fächer du möchtest; Bingrove schlägt die
-gleichmäßigsten Mischungen von Bin-Größen vor, die das Raster füllen („10 × 3×1“,
-„5 × 2×2 + 5 × 2×1“ …), ein Klick belegt die Schublade so, und die Anzahl je Größe lässt sich
-danach verschieben. **Generieren + Druckliste** schreibt alles nach `Gridfinity/<Schublade>` in die
+Bibliothek legen“ freigeben – dann *Plugins ▾ → Bingrove*. Das Panel hat links drei Reiter
+(*Projekt*: Art, Maße, Ränder, Platte; *Belegung*: Fächer; *Ausgabe*: Drucker, Drucklisten,
+Magnetprofil), in der Mitte den Plan als Raster-Editor (verschieben, Größe ändern,
+zusammenlegen, teilen, auf freien Zellen neue Bins aufziehen), rechts 3D-Vorschau und
+Teileliste. Ein Klick auf ein Fach öffnet darunter seine Einstellungen: Höhe, Fächer,
+Label-Lasche, Griffmulde, Gravur, Halterart samt eigenen Maßen, Ausschnitte. Unter *Belegung*
+gibst du an, wie viele Fächer du möchtest; Bingrove schlägt die gleichmäßigsten Mischungen von
+Bin-Größen vor, die das Raster füllen („10 × 3×1“, „5 × 2×2 + 5 × 2×1“ …), ein Klick belegt die
+Schublade so, und die Anzahl je Größe lässt sich danach verschieben. **Generieren + Druckliste** schreibt alles nach `Gridfinity/<Schublade>` in die
 Bibliothek und legt die Drucklisten `<Schublade> – Teile` (STL mit Stückzahl) und
 `<Schublade> – Druckbetten` (3MF je Bett) an; ein Klick im Verlauf macht es rückgängig.
 
@@ -100,7 +112,9 @@ Studio …) sehen drei Tools:
 
 Aus *„Schublade 250 × 305 × 100 mm: Stifte, hinten zwei Kabelbins, ein Bitsatz 60 × 35 × 25 mm,
 sechs 18650-Zellen“* wird ein Plan und dann ein Vorschlag, den der Nutzer in Meshgrove annimmt.
-Fotos laufen über den AI-Client: Er liest die Maße aus dem Bild und übergibt Zahlen.
+*„Eine Werkbankplatte 600 × 300 mm mit einem 1/4"-Nusssatz und einer Reihe 8-mm-Fräser“* ist
+`kind: surface` mit `set: sockets_1_4_mm` und einem `holes`-Halter. Fotos laufen über den
+AI-Client: Er liest die Maße aus dem Bild und übergibt Zahlen.
 
 ## Von der Kommandozeile
 
@@ -110,6 +124,7 @@ target/release/bingrove presets
 target/release/bingrove drawer 250x305x100 --name Kleinkram \
     --inhalt "Stifte:20x180x20" --inhalt "2*Kabel:bin 2x2x12" --inhalt "Bits:60x35x25" --zusammenbau
 target/release/bingrove --schublade 250x305            # das Preset mit seiner festen Belegung
+target/release/bingrove drawer 600x300x100 --name Bank --flaeche --plan   # eine Werkbankplatte
 target/release/bingrove bin 3 1 -d 3 1 --magnete ecken  # ein einzelner Bin
 target/release/bingrove tape 103 -n 2 1 -s 3            # ein Tape-Halter
 ```
@@ -143,12 +158,16 @@ bis das Crate veröffentlicht ist.
 
 ## Stand
 
-Funktioniert: Planung, Randbins, Halter, Ausschnitte (auch die Silhouette eines Bibliotheksmodells),
-Kalibrierung, STL/3MF/Projekt-Export, CLI, Plugin-Tools und -Panel. Kommt: ein Browser-Build,
-weitere Halterarten, konkave Silhouetten.
+Funktioniert: Planung, Randbins, Fächer-Vorschläge, Halter mit eigenen Maßen und Sätzen, Gravur,
+Flächen mit Schrauben und Verbindern, Ausschnitte (auch die Silhouette eines
+Bibliotheksmodells), Kalibrierung, STL/3MF/Projekt-Export, CLI, Plugin-Tools und -Panel. Kommt:
+Koffer mit Deckel, Wandmuster und Lite-Bins, Halbraster, ein Browser-Build, konkave Silhouetten.
 
 ## Lizenz
 
 MIT oder Apache-2.0 nach Wahl (`LICENSE-MIT`, `LICENSE-APACHE`). Die Gridfinity-Profile folgen
 der veröffentlichten Spezifikation; Gridfinity ist von Zack Freedman, Bingrove steht in keiner
-Verbindung zu ihm oder gridfinity.xyz.
+Verbindung zu ihm oder gridfinity.xyz. Die Gravur nutzt die Schrift Hershey Simplex: The Hershey
+Fonts were originally created by Dr. A. V. Hershey while working at the U. S. National Bureau of
+Standards; the format of the font data in this distribution was originally created by James
+Hurt, Cognition, Inc.

@@ -55,9 +55,19 @@ from sliding around.
   polygon).
 - **Edge bins** on any side, including corners.
 - **Holders**: tape rolls on ring posts, batteries (AA, AAA, C, D, 18650, 21700, custom), 1/4"
-  bits, pens standing or lying, screwdrivers in troughs with a wider handle rest.
-- **Calibration pieces**: a magnet-hole ladder labelled with its diameters and a fit test with
-  three bins of different clearance, to dial in a printer.
+  bits, pens standing or lying, screwdrivers in troughs with a wider handle rest; hole grids
+  with your own diameter, depth, pitch, count and shape (round, hex, square) for router shanks,
+  drills and the like; **rows of holes with their own sizes**, each size engraved in front of
+  its hole, with sets to load (sockets on 1/4", 3/8" and 1/2" drives, metric and inch, hex keys,
+  drills, standing screwdrivers) and stepped rows; **slots** for cards, swatches, coin cells and
+  blades.
+- **Engraving**: a stroke font (Hershey Simplex) cuts text into the label shelf or the front
+  wall of a bin and titles into holders.
+- **Surfaces**: a plate for a workbench or desk that is the grid itself, cells left free where
+  nothing stands, with a solid floor, countersunk M4 screw holes and dovetail connectors
+  between the pieces.
+- **Calibration pieces**: a magnet-hole ladder labelled with its diameters, a fit test with
+  three bins of different clearance, and a connector pair, to dial in a printer.
 - **Output**: one STL per distinct part with quantities, 3MF files with the parts arranged per
   print bed, the assembled drawer as 3MF to look at, and a `*.gridfinity.json` project file that
   reopens the drawer.
@@ -73,12 +83,14 @@ scripts/install-into-meshgrove.sh        # copies it into Meshgrove's plugin fol
 ```
 
 In Meshgrove: *Settings → Plugins* — install, grant "AI tools" and "files into the library" —
-then *Plugins ▾ → Bingrove*. The panel has the drawer's form on the left, the plan as a grid
-editor in the middle (move, resize, merge, split, heights, dividers, holders by context menu),
-the 3D preview and parts list on the right. Under *Fächer* you say how many compartments you
-want; Bingrove offers the evenest mixes of bin sizes that tile the grid ("10 × 3×1",
-"5 × 2×2 + 5 × 2×1", …), one click lays the drawer out that way, and the counts per size can
-be shifted afterwards. **Generieren + Druckliste** writes everything into
+then *Plugins ▾ → Bingrove*. The panel has three tabs on the left (*Projekt*: kind, sizes,
+margins, plate; *Belegung*: compartments; *Ausgabe*: printer, print lists, magnet profile),
+the plan as a grid editor in the middle (move, resize, merge, split, draw new bins on free
+cells), and the 3D preview with the parts list on the right. A click on a bin opens its
+settings under the grid: height, dividers, label shelf, scoop, engraving, holder kind and the
+holder's own sizes, cutouts. Under *Belegung* you say how many compartments you want; Bingrove
+offers the evenest mixes of bin sizes that tile the grid ("10 × 3×1", "5 × 2×2 + 5 × 2×1", …),
+one click lays the drawer out that way, and the counts per size can be shifted afterwards. **Generieren + Druckliste** writes everything into
 `Gridfinity/<drawer>` in the library and makes the print lists `<drawer> – Teile` (STL with
 quantities) and `<drawer> – Druckbetten` (3MF per bed); one click in the history undoes it.
 
@@ -97,7 +109,9 @@ Studio …) see three tools:
 
 A request like *"250 × 305 × 100 mm drawer: pens, two cable bins at the back, a 60 × 35 × 25 mm
 bit set, six 18650 cells"* becomes a plan, then a suggestion the user accepts in Meshgrove.
-Photos work through the AI client: it reads the sizes off the picture and passes numbers.
+*"A 600 × 300 mm bench plate with a 1/4" socket set and a row of 8 mm router bits"* is
+`kind: surface` with `set: sockets_1_4_mm` and a `holes` holder. Photos work through the AI
+client: it reads the sizes off the picture and passes numbers.
 
 ## From the command line
 
@@ -107,6 +121,7 @@ target/release/bingrove presets
 target/release/bingrove drawer 250x305x100 --name Kleinkram \
     --inhalt "Stifte:20x180x20" --inhalt "2*Kabel:bin 2x2x12" --inhalt "Bits:60x35x25" --zusammenbau
 target/release/bingrove --schublade 250x305            # the preset with its fixed layout
+target/release/bingrove drawer 600x300x100 --name Bank --flaeche --plan   # a bench plate
 target/release/bingrove bin 3 1 -d 3 1 --magnete ecken  # one bin
 target/release/bingrove tape 103 -n 2 1 -s 3            # a tape holder
 ```
@@ -140,12 +155,16 @@ until that crate is published.
 
 ## Status
 
-Working: planning, edge bins, holders, cutouts (including the silhouette of a library model),
-calibration, STL/3MF/project export, CLI, plugin tools and panel. Coming: a browser build, more
-holder kinds, concave silhouettes.
+Working: planning, edge bins, compartment suggestions, holders with their own sizes and sets,
+engraving, surfaces with screws and connectors, cutouts (including the silhouette of a library
+model), calibration, STL/3MF/project export, CLI, plugin tools and panel. Coming: a case with a
+lid, wall patterns and lite bins, half-grid, a browser build, concave silhouettes.
 
 ## License
 
 MIT or Apache-2.0, at your option (`LICENSE-MIT`, `LICENSE-APACHE`). The Gridfinity profiles
 follow the published spec; Gridfinity is by Zack Freedman, and Bingrove is not affiliated with
-him or with gridfinity.xyz.
+him or with gridfinity.xyz. The engraving uses the Hershey Simplex font: the Hershey Fonts were
+originally created by Dr. A. V. Hershey while working at the U. S. National Bureau of Standards;
+the format of the font data in this distribution was originally created by James Hurt,
+Cognition, Inc.
