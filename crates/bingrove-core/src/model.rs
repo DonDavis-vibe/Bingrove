@@ -590,6 +590,8 @@ pub enum PlateFloor {
     /// Open frame, bins stand on the drawer floor.
     #[default]
     Open,
+    /// A solid floor without holes; what screws and connectors need.
+    Solid,
     /// Floor with a magnet under each cell corner.
     Magnets,
 }

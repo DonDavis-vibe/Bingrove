@@ -1,12 +1,25 @@
 //! File names of the parts, German and ASCII like the original script, so existing print lists
 //! and folders keep their names.
 
-use crate::model::{BinSpec, DividerMode, EdgeMode, HolderSpec, MagnetMode, Side, TapeSpec};
+use crate::model::{BinSpec, DividerMode, EdgeMode, HolderSpec, MagnetMode, Mount, PlateFloor, Side, TapeSpec};
 
-pub fn baseplate(row: usize, col: usize, cells: [u32; 2], magnets: bool) -> String {
+pub fn baseplate(row: usize, col: usize, cells: [u32; 2], floor: PlateFloor, mount: Mount) -> String {
     let col = char::from(b'A' + col as u8);
-    let mag = if magnets { "_magnete" } else { "" };
-    format!("baseplate_{}{col}_{}x{}{mag}.stl", row + 1, cells[0], cells[1])
+    let mut name = format!("baseplate_{}{col}_{}x{}", row + 1, cells[0], cells[1]);
+    match floor {
+        PlateFloor::Open => {}
+        PlateFloor::Solid => name += "_boden",
+        PlateFloor::Magnets => name += "_magnete",
+    }
+    if floor != PlateFloor::Open {
+        if mount.screws {
+            name += "_schrauben";
+        }
+        if mount.connectors {
+            name += "_verbinder";
+        }
+    }
+    name + ".stl"
 }
 
 pub fn bin(b: &BinSpec) -> String {
@@ -123,8 +136,15 @@ mod tests {
 
     #[test]
     fn names_match_the_python_script() {
-        assert_eq!(baseplate(0, 1, [2, 4], false), "baseplate_1B_2x4.stl");
-        assert_eq!(baseplate(1, 0, [5, 3], true), "baseplate_2A_5x3_magnete.stl");
+        assert_eq!(baseplate(0, 1, [2, 4], PlateFloor::Open, Mount::default()), "baseplate_1B_2x4.stl");
+        assert_eq!(baseplate(1, 0, [5, 3], PlateFloor::Magnets, Mount::default()), "baseplate_2A_5x3_magnete.stl");
+        let mount = Mount { screws: true, connectors: true };
+        assert_eq!(baseplate(0, 0, [5, 3], PlateFloor::Solid, mount), "baseplate_1A_5x3_boden_schrauben_verbinder.stl");
+        assert_eq!(
+            baseplate(0, 0, [5, 3], PlateFloor::Open, mount),
+            "baseplate_1A_5x3.stl",
+            "an open frame holds nothing"
+        );
         let b = BinSpec { cells: [2, 1], units: 9, dividers: [2, 1], ..BinSpec::default() };
         assert_eq!(bin(&b), "bin_2x1_9u_2x1fach.stl");
         let b = BinSpec { cells: [1, 1], magnets: MagnetMode::Corners, lip: false, ..BinSpec::default() };

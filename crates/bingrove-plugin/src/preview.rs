@@ -51,7 +51,8 @@ pub(crate) fn compute(project: &DrawerProject, key: &str) -> Result<usize, Plugi
     // The plate once for all its pieces, the bins one by one so the progress bar moves.
     guest::host::progress(0.0, "Baseplate");
     let mut plates =
-        geom::baseplate::pieces_of(&plan.grid, &plan.claims, &plan.pieces, plan.magnets, &profile).into_iter();
+        geom::baseplate::pieces_of(&plan.grid, &plan.claims, &plan.pieces, plan.floor, plan.mount, &profile)
+            .into_iter();
     let mut parts = Vec::with_capacity(n);
     let mut meshes = Vec::with_capacity(n);
     for i in 0..n {

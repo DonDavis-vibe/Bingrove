@@ -40,7 +40,7 @@ fn assert_assembles(plan: &Plan) {
         let mesh = part.mesh().unwrap();
         assert!(mesh.is_closed(), "{} is not watertight", part.name);
     }
-    let plate = baseplate::plate(&plan.grid, &plan.claims, &profile);
+    let plate = baseplate::plate(&plan.grid, &plan.claims, plan.floor, &profile);
     let bins = placed_bins(plan, &profile);
     let [w, d] = plan.grid.plate;
     for (i, (name, b)) in bins.iter().enumerate() {
@@ -54,6 +54,50 @@ fn assert_assembles(plan: &Plan) {
             assert!(hit < 1e-3, "{name} and {other} overlap by {hit:.4} mm³");
         }
     }
+}
+
+#[test]
+fn a_mounted_surface_assembles_from_its_pieces() {
+    use bingrove_core::model::{BedSpec, Kind, Mount};
+    let profile = Profile::default();
+    // 6 x 3 cells on a bed that takes 4 x 3: two pieces, joined by connectors, each screwed down.
+    let project = DrawerProject {
+        drawer: DrawerSpec { name: "Bank".into(), width: 252.0, depth: 126.0, height: 100.0 },
+        options: PlateOptions {
+            kind: Kind::Surface,
+            floor: PlateFloor::Solid,
+            mount: Mount { screws: true, connectors: true },
+            ..PlateOptions::default()
+        },
+        bed: BedSpec { x: 180.0, y: 180.0, ..BedSpec::default() },
+        ..DrawerProject::default()
+    };
+    let plan = plan(&project).unwrap();
+    assert_eq!(plan.pieces.len(), 2, "{:?}", plan.split);
+    assert!(plan.parts[0].name.ends_with("_boden_schrauben_verbinder.stl"), "{}", plan.parts[0].name);
+    let pieces = baseplate::pieces_of(&plan.grid, &plan.claims, &plan.pieces, plan.floor, plan.mount, &profile);
+    for part in &pieces {
+        assert!(part.mesh().unwrap().is_closed(), "{} is not watertight", part.name);
+    }
+    // Back in plate coordinates the tab of the left piece lies in the pocket of the right one.
+    let placed: Vec<Solid> =
+        pieces.iter().map(|p| p.solid.translate(Vec3::new(p.origin[0], p.origin[1], 0.0))).collect();
+    let hit = (&placed[0] ^ &placed[1]).volume();
+    assert!(hit < 1e-3, "the pieces overlap by {hit:.4} mm³");
+    let cut = plan.grid.line(0, plan.split[0][0]);
+    let left = placed[0].bounding_box();
+    assert!(left.max.x > cut + 3.5, "the left piece carries the tab: {} vs cut {cut}", left.max.x);
+    assert!((placed[1].bounding_box().min.x - cut).abs() < 1e-6, "the right piece starts at the cut");
+    // Screws take material out of a plain floor; connectors only move it around.
+    let plain = PlateOptions { mount: Mount::default(), ..project.options.clone() };
+    let plan_plain = plan_for(&project, plain);
+    let v_plain: f64 = all_parts(&plan_plain, &profile).iter().map(|p| p.solid.volume()).sum();
+    let v_mount: f64 = pieces.iter().map(|p| p.solid.volume()).sum();
+    assert!(v_mount < v_plain - 100.0, "screw holes missing: {v_mount} vs {v_plain}");
+}
+
+fn plan_for(project: &DrawerProject, options: PlateOptions) -> Plan {
+    plan(&DrawerProject { options, ..project.clone() }).unwrap()
 }
 
 #[test]

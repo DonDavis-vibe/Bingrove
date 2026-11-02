@@ -77,6 +77,18 @@ pub const TAPE_FILLET: f64 = 5.0;
 /// Air between rolls and to the bin edge.
 pub const TAPE_ROLL_GAP: f64 = 1.0;
 
+/// Screw hole through a plate floor (M4 wood screw) and its countersink at the top.
+pub const SCREW_D: f64 = 4.2;
+pub const SCREW_HEAD: f64 = 8.5;
+/// Dovetail connector between plate pieces: neck at the cut line, head at its end, how far it
+/// reaches into the neighbour, air around the tab in its pocket, and how far it stays off the
+/// floor's top and bottom.
+pub const CONNECTOR_NECK: f64 = 8.0;
+pub const CONNECTOR_HEAD: f64 = 11.0;
+pub const CONNECTOR_DEPTH: f64 = 4.0;
+pub const CONNECTOR_GAP: f64 = 0.15;
+pub const CONNECTOR_INSET: f64 = 0.4;
+
 /// Outer size of a bin covering `cells` grid cells along one axis.
 pub fn bin_outer(cells: u32) -> f64 {
     cells as f64 * GRID - (GRID - BIN_SIZE)

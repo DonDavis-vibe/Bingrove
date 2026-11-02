@@ -2,7 +2,7 @@
 //! test of bins with different air to the baseplate.
 
 use super::Part;
-use super::kernel::{Solid, cuboid, cylinder, rrect_prism, subtract, swept, translate, union};
+use super::kernel::{Solid, cuboid, cylinder, polygon_prism, rrect_prism, subtract, swept, translate, union};
 use super::text;
 use crate::profile::Profile;
 use crate::spec::*;
@@ -68,7 +68,26 @@ pub fn parts(p: &Profile) -> Vec<Part> {
     for (i, gap) in FIT_GAPS.iter().enumerate() {
         out.push(fit_bin(*gap, i as u32 + 1, p));
     }
+    out.extend(connector_pair(p));
     out
+}
+
+/// Two slabs of plate floor to try the dovetail connector: "a" carries the tab on its right
+/// edge, "b" the pocket on its left, both lettered.
+pub fn connector_pair(p: &Profile) -> Vec<Part> {
+    let fl = p.magnet.h + p.magnet.floor;
+    let (w, d) = (24.0, 24.0);
+    let height = fl - 2.0 * CONNECTOR_INSET;
+    let tail = |grow: f64| -> Solid {
+        let (n, hd, dp) = (CONNECTOR_NECK / 2.0 + grow, CONNECTOR_HEAD / 2.0 + grow, CONNECTOR_DEPTH + grow);
+        let pts = vec![[-1.0, d / 2.0 - n], [dp, d / 2.0 - hd], [dp, d / 2.0 + hd], [-1.0, d / 2.0 + n]];
+        translate(&polygon_prism(&pts, 0.0, height, 8), [0.0, 0.0, CONNECTOR_INSET])
+    };
+    let slab = || translate(&rrect_prism(w, d, 2.0, fl, p.seg), [w / 2.0, d / 2.0, 0.0]);
+    let letter = |s: Solid, t: &str| text::engrave(s, t, [w / 2.0, d / 2.0, fl], 6.0, 0.6);
+    let a = letter(slab() + translate(&tail(0.0), [w, 0.0, 0.0]), "a");
+    let b = letter(slab() - tail(CONNECTOR_GAP), "b");
+    vec![Part::new("kalibrierung_verbinder_a.stl".into(), a), Part::new("kalibrierung_verbinder_b.stl".into(), b)]
 }
 
 /// The solids only, for tests.

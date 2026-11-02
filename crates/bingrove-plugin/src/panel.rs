@@ -543,17 +543,40 @@ impl DrawerPanel {
             rows.extend(drawer_rows);
         }
         let drawer = Node::Form { id: "drawer".into(), rows, submit: None };
+        let has_floor = o.floor != PlateFloor::Open;
         let plate = Node::Form {
             id: "plate".into(),
-            rows: vec![row(
-                "Platte",
-                Node::Checkbox {
-                    id: "magnets".into(),
-                    label: "Boden mit Magnetlöchern".into(),
-                    checked: o.floor == PlateFloor::Magnets,
-                    enabled: true,
-                },
-            )],
+            rows: vec![
+                row(
+                    "Platte",
+                    select(
+                        "floor",
+                        &[("open", "offener Rahmen"), ("solid", "mit Boden"), ("magnets", "Boden mit Magnetlöchern")],
+                        match o.floor {
+                            PlateFloor::Open => "open",
+                            PlateFloor::Solid => "solid",
+                            PlateFloor::Magnets => "magnets",
+                        },
+                    ),
+                ),
+                row(
+                    "Befestigung",
+                    Node::row(vec![
+                        Node::Checkbox {
+                            id: "screws".into(),
+                            label: "Schraublöcher (gesenkt, in den Ecken)".into(),
+                            checked: has_floor && o.mount.screws,
+                            enabled: has_floor,
+                        },
+                        Node::Checkbox {
+                            id: "connectors".into(),
+                            label: "Schwalbenschwanz zwischen den Teilen".into(),
+                            checked: has_floor && o.mount.connectors,
+                            enabled: has_floor,
+                        },
+                    ]),
+                ),
+            ],
             submit: None,
         };
         let output = Node::Form {
@@ -1608,10 +1631,15 @@ impl GuestPanel for DrawerPanel {
                             };
                             o.align[usize::from(id == "align_y")] = a;
                         }
-                        ("magnets", _) => {
-                            o.floor =
-                                if value.as_bool().unwrap_or(false) { PlateFloor::Magnets } else { PlateFloor::Open }
+                        ("floor", _) => {
+                            o.floor = match text.as_deref() {
+                                Some("solid") => PlateFloor::Solid,
+                                Some("magnets") => PlateFloor::Magnets,
+                                _ => PlateFloor::Open,
+                            }
                         }
+                        ("screws", _) => o.mount.screws = value.as_bool().unwrap_or(false),
+                        ("connectors", _) => o.mount.connectors = value.as_bool().unwrap_or(false),
                         ("printer", _) => s.project.bed = crate::bed_of(text.as_deref()),
                         ("lists", _) => {
                             s.lists = match text.as_deref() {

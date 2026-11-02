@@ -10,7 +10,7 @@ mod panel;
 mod preview;
 
 use bingrove_core::export::{self, ExportOptions, FileKind, PROJECT_FORMAT, ProjectFile};
-use bingrove_core::model::{Align, Cover, DrawerProject, DrawerSpec, EdgeMode, Kind, PlateFloor, PlateOptions};
+use bingrove_core::model::{Align, Cover, DrawerProject, DrawerSpec, EdgeMode, Kind, Mount, PlateFloor, PlateOptions};
 use bingrove_core::plan::{Plan, plan};
 use bingrove_core::presets::Preset;
 use bingrove_core::profile::Profile;
@@ -62,6 +62,10 @@ pub(crate) struct DrawerArgs {
     pub edge_mode: Option<EdgeMode>,
     pub align: Option<[Align; 2]>,
     pub magnets: bool,
+    /// The plate's floor: `open`, `solid` or `magnets` (overrides `magnets`).
+    pub floor: Option<PlateFloor>,
+    /// Screws and connectors; both need a floor.
+    pub mount: Option<Mount>,
     pub printer: Option<String>,
     pub lists: ListMode,
 }
@@ -104,7 +108,8 @@ impl DrawerArgs {
             edge_threshold: self.edge_threshold.unwrap_or(10.0),
             edge_mode: self.edge_mode.unwrap_or_default(),
             align: self.align.unwrap_or_default(),
-            floor: if self.magnets { PlateFloor::Magnets } else { PlateFloor::Open },
+            floor: self.floor.unwrap_or(if self.magnets { PlateFloor::Magnets } else { PlateFloor::Open }),
+            mount: self.mount.unwrap_or_default(),
             ..PlateOptions::default()
         };
         project.bed = bed_of(self.printer.as_deref());
@@ -289,6 +294,8 @@ fn drawer_schema(with_lists: bool) -> Value {
         "edge_mode": {"type": "string", "enum": ["to_floor", "resting", "none"], "description": "to_floor (default): edge bins reach the drawer floor, no supports; resting: they rest on the solid plate margin (needs supports); none: no edge bins at all, the margins stay solid plate and every bin is 42 n"},
         "align": {"type": "array", "items": {"type": "string", "enum": ["start", "center", "end"]}, "minItems": 2, "maxItems": 2, "description": "where the grid sits along x and y when the leftover is split: center (default), start (left/front wall), end"},
         "magnets": {"type": "boolean", "description": "plate with a floor and magnet holes under every cell corner"},
+        "floor": {"type": "string", "enum": ["open", "solid", "magnets"], "description": "the plate: an open frame (default), a solid floor, or a floor with magnet holes; screws and connectors need a floor"},
+        "mount": {"type": "object", "properties": {"screws": {"type": "boolean"}, "connectors": {"type": "boolean"}}, "description": "screws: countersunk M4 holes at the outer corner pads of every piece, to fasten the plate to a bench; connectors: dovetail tabs between the pieces"},
         "printer": {"type": "string", "description": "one of the user's printers (its bed splits the plate); default the main one"}
     });
     if with_lists {

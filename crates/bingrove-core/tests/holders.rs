@@ -185,13 +185,18 @@ fn cutouts_pocket_the_insert() {
 fn calibration_pieces() {
     let p = Profile::default();
     let parts = calibration::parts(&p);
-    assert_eq!(parts.len(), 5);
+    assert_eq!(parts.len(), 7);
     let names: Vec<_> = parts.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(names[0], "kalibrierung_magnete_3.9-4.5.stl");
     assert_eq!(
-        names[2..],
+        names[2..5],
         ["kalibrierung_passung_bin_0.15.stl", "kalibrierung_passung_bin_0.25.stl", "kalibrierung_passung_bin_0.35.stl"]
     );
+    assert_eq!(names[5..], ["kalibrierung_verbinder_a.stl", "kalibrierung_verbinder_b.stl"]);
+    // The tab fits its pocket: a laid against b (b's left edge at a's right edge) leaves no overlap.
+    let (a, b) = (&parts[5].solid, &parts[6].solid);
+    let joined = (a ^ &b.translate(bingrove_core::geom::kernel::Vec3::new(24.0, 0.0, 0.0))).volume();
+    assert!(joined < 1e-3, "tab and pocket overlap by {joined}");
     for part in &parts {
         let mesh = part.mesh().unwrap();
         assert!(mesh.is_closed(), "{}", part.name);

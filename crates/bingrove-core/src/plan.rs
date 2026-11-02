@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::grid::{Grid, PlanError, Zone};
 use crate::layout::{Repair, repair_cover, validate_cover};
-use crate::model::{BinSpec, Cover, DrawerProject, EdgeMode, HolderSpec, Kind, Placement, PlateFloor, Side};
+use crate::model::{BinSpec, Cover, DrawerProject, EdgeMode, HolderSpec, Kind, Mount, Placement, PlateFloor, Side};
 use crate::solver::{Heights, auto_layout_cover, heights};
-use crate::spec::{BIN_GAP, EDGE_GAP, GRID, LIP_H, bin_outer, body_height};
+use crate::spec::{BIN_GAP, CONNECTOR_DEPTH, EDGE_GAP, GRID, LIP_H, bin_outer, body_height};
 use crate::split::{extents, split_plate};
 use crate::warn::Warning;
 
@@ -96,6 +96,9 @@ pub struct Plan {
     pub placements: Vec<PlacedPart>,
     pub parts: Vec<BomEntry>,
     pub magnets: bool,
+    pub floor: PlateFloor,
+    /// Screws and connectors of the plate (none for an open frame).
+    pub mount: Mount,
     pub kind: Kind,
     pub cover: Cover,
     pub warnings: Vec<Warning>,
@@ -181,11 +184,11 @@ fn canonical(spec: &BinSpec, e: [f64; 4]) -> ([f64; 4], bool) {
     if spec.label_tab || spec.scoop > 0 || key(&e) >= key(&turned) { (e, false) } else { (turned, true) }
 }
 
-fn part_name(part: &PartSpec, pieces: &[PlatePiece], magnets: bool) -> String {
+fn part_name(part: &PartSpec, pieces: &[PlatePiece], floor: PlateFloor, mount: Mount) -> String {
     match part {
         PartSpec::Plate { piece } => {
             let p = &pieces[*piece];
-            crate::names::baseplate(p.row, p.col, p.cells, magnets)
+            crate::names::baseplate(p.row, p.col, p.cells, floor, mount)
         }
         PartSpec::Bin { spec, extents, edge_mode } => crate::names::edge_bin(spec, *extents, *edge_mode),
         PartSpec::Holder(h) => crate::names::holder(h),
@@ -237,13 +240,25 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
         None => split_plate(&grid, reach(&grid, &claims), &project.bed)
             .unwrap_or_else(|| [vec![1; nx as usize], vec![1; ny as usize]]),
     };
-    let pieces = plate_pieces(&grid, reach(&grid, &claims), &split);
+    let mut pieces = plate_pieces(&grid, reach(&grid, &claims), &split);
     let magnets = o.floor == PlateFloor::Magnets;
+    // Screws and connectors need a floor; the connectors' tabs make a piece longer as printed.
+    let mount = if o.floor == PlateFloor::Open { Mount::default() } else { o.mount };
+    if mount.connectors {
+        for piece in &mut pieces {
+            if piece.col + 1 < split[0].len() {
+                piece.size[0] += CONNECTOR_DEPTH;
+            }
+            if piece.row + 1 < split[1].len() {
+                piece.size[1] += CONNECTOR_DEPTH;
+            }
+        }
+    }
 
     let mut parts: Vec<BomEntry> = Vec::new();
     for (i, piece) in pieces.iter().enumerate() {
         let part = PartSpec::Plate { piece: i };
-        let name = part_name(&part, &pieces, magnets);
+        let name = part_name(&part, &pieces, o.floor, mount);
         parts.push(BomEntry { name, part, quantity: 1, size: [piece.size[0], piece.size[1], grid.height()] });
     }
     let mut out = Vec::with_capacity(placed.len());
@@ -262,7 +277,7 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
                 i
             }
             None => {
-                let name = part_name(&part, &pieces, magnets);
+                let name = part_name(&part, &pieces, o.floor, mount);
                 parts.push(BomEntry { name, part, quantity: 1, size });
                 parts.len() - 1
             }
@@ -295,6 +310,8 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
         placements: out,
         parts,
         magnets,
+        floor: o.floor,
+        mount,
         kind: o.kind,
         cover,
         warnings,
