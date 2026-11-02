@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{BinSpec, Placement};
+use crate::model::{BinSpec, Cover, Placement};
 use crate::solver::{Heights, Occupancy, fill};
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -27,6 +27,12 @@ fn show(counts: &[Vec<u32>]) -> String {
 
 /// Checks that the placements fill an `nx` × `ny` grid exactly once.
 pub fn validate(nx: u32, ny: u32, placements: &[Placement]) -> Result<(), LayoutError> {
+    validate_cover(nx, ny, placements, Cover::Exact)
+}
+
+/// [`validate`] for a cover: `Partial` lets cells stay free and only rejects overlaps and
+/// bins outside the grid.
+pub fn validate_cover(nx: u32, ny: u32, placements: &[Placement], cover: Cover) -> Result<(), LayoutError> {
     let mut counts = vec![vec![0u32; nx as usize]; ny as usize];
     for p in placements {
         let [w, d] = p.cells();
@@ -39,7 +45,11 @@ pub fn validate(nx: u32, ny: u32, placements: &[Placement]) -> Result<(), Layout
             }
         }
     }
-    if counts.iter().flatten().any(|&c| c != 1) {
+    let wrong = match cover {
+        Cover::Exact => counts.iter().flatten().any(|&c| c != 1),
+        Cover::Partial => counts.iter().flatten().any(|&c| c > 1),
+    };
+    if wrong {
         return Err(LayoutError::NotExact { counts });
     }
     Ok(())
@@ -58,6 +68,17 @@ pub enum Repair {
 /// sticks out to the nearest free spot of its size, drops it when there is none, then fills
 /// the remaining cells with bins.
 pub fn repair(nx: u32, ny: u32, placements: Vec<Placement>, h: Heights) -> (Vec<Placement>, Vec<Repair>) {
+    repair_cover(nx, ny, placements, h, Cover::Exact)
+}
+
+/// [`repair`] for a cover: with `Partial` the free cells stay free.
+pub fn repair_cover(
+    nx: u32,
+    ny: u32,
+    placements: Vec<Placement>,
+    h: Heights,
+    cover: Cover,
+) -> (Vec<Placement>, Vec<Repair>) {
     let mut occ = Occupancy::new(nx, ny);
     let mut out = Vec::with_capacity(placements.len());
     let mut repairs = Vec::new();
@@ -89,11 +110,13 @@ pub fn repair(nx: u32, ny: u32, placements: Vec<Placement>, h: Heights) -> (Vec<
             None => repairs.push(Repair::Dropped { index, cells }),
         }
     }
-    let filled = fill(&mut occ, h);
-    if !filled.is_empty() {
-        repairs.push(Repair::Filled { count: filled.len() });
+    if cover == Cover::Exact {
+        let filled = fill(&mut occ, h);
+        if !filled.is_empty() {
+            repairs.push(Repair::Filled { count: filled.len() });
+        }
+        out.extend(filled);
     }
-    out.extend(filled);
     (out, repairs)
 }
 
@@ -145,6 +168,14 @@ mod tests {
         assert!(matches!(validate(2, 1, &[bin(1, 0, 2, 1)]), Err(LayoutError::OutOfGrid { .. })));
         assert!(matches!(validate(2, 1, &[bin(0, 0, 1, 1)]), Err(LayoutError::NotExact { .. })));
         validate(2, 1, &[bin(0, 0, 1, 1), bin(1, 0, 1, 1)]).unwrap();
+        // A partial cover allows gaps but no overlaps.
+        validate_cover(2, 1, &[bin(0, 0, 1, 1)], Cover::Partial).unwrap();
+        validate_cover(2, 1, &[], Cover::Partial).unwrap();
+        assert!(validate_cover(2, 1, &[bin(0, 0, 1, 1), bin(0, 0, 2, 1)], Cover::Partial).is_err());
+        let h = Heights { back: 6, front: 6, max: 6 };
+        let (out, repairs) = repair_cover(3, 3, vec![bin(0, 0, 2, 2), bin(1, 1, 1, 1)], h, Cover::Partial);
+        assert_eq!(out.len(), 2, "the overlapping bin is moved, nothing is filled in: {repairs:?}");
+        assert!(!repairs.iter().any(|r| matches!(r, Repair::Filled { .. })));
     }
 
     #[test]

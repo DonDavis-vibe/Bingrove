@@ -8,8 +8,8 @@ use std::cmp::Ordering;
 use bingrove_core::catalog::{holes_grid, row_cells, sets};
 use bingrove_core::grid::Zone;
 use bingrove_core::model::{
-    Align, BinSpec, Cutout, DrawerProject, EdgeMode, HolderSpec, HoleShape, Placement, PlateFloor, RoundItem, RowHole,
-    Side,
+    Align, BinSpec, Cover, Cutout, DrawerProject, EdgeMode, HolderSpec, HoleShape, Kind, Placement, PlateFloor,
+    RoundItem, RowHole, Side,
 };
 use bingrove_core::names::mm;
 use bingrove_core::plan::{PartSpec, Plan, plan};
@@ -457,49 +457,92 @@ impl DrawerPanel {
                 format!("{} ({:.0} × {:.0} mm)", s.project.bed.name, s.project.bed.x, s.project.bed.y),
             ));
         }
-        let drawer = Node::Form {
-            id: "drawer".into(),
-            rows: vec![
-                row("Name", Node::text_input("name", d.name.clone())),
-                row("Breite", Node::mm("width", d.width, 42.0, 1500.0)),
-                row("Tiefe", Node::mm("depth", d.depth, 42.0, 1500.0)),
-                row("Höhe innen", Node::mm("height", d.height, 0.0, 1000.0)),
-                row("Randzone ab", Node::mm("edge_threshold", o.edge_threshold, 0.0, 42.0)),
-                row(
-                    "Randbins",
-                    select(
-                        "edge_mode",
-                        &[
-                            ("to_floor", "bis zum Boden (ohne Stützen)"),
-                            ("resting", "aufliegend (Stützen nötig)"),
-                            ("none", "keine – Rand bleibt Platte"),
-                        ],
-                        match o.edge_mode {
-                            EdgeMode::ToFloor => "to_floor",
-                            EdgeMode::Resting => "resting",
-                            EdgeMode::None => "none",
-                        },
-                    ),
+        let surface = o.kind == Kind::Surface;
+        let mut rows = vec![
+            row(
+                "Art",
+                select(
+                    "kind",
+                    &[("drawer", "Schubladeneinsatz"), ("surface", "Fläche (Werkbank, Tisch)")],
+                    if surface { "surface" } else { "drawer" },
                 ),
-                row(
-                    "Raster X",
-                    select(
-                        "align_x",
-                        &[("start", "links bündig"), ("center", "mittig"), ("end", "rechts bündig")],
-                        align(o.align[0]),
-                    ),
+            ),
+            row("Name", Node::text_input("name", d.name.clone())),
+        ];
+        if surface {
+            let cells = plan.map_or([0, 0], |p| p.grid.cells);
+            let int = |id: &str, value: u32| Node::NumberInput {
+                id: id.into(),
+                value: f64::from(value),
+                min: Some(1.0),
+                max: Some(35.0),
+                step: Some(1.0),
+                unit: Unit::None,
+                decimals: Some(0),
+                enabled: true,
+            };
+            rows.push(row("Zellen quer × längs", Node::row(vec![int("cells_x", cells[0]), int("cells_y", cells[1])])));
+            rows.push(row(
+                "Platte",
+                Node::Label {
+                    text: format!("{:.0} × {:.0} mm, Zellen bleiben frei, wo nichts steht", d.width, d.depth),
+                    style: TextStyle::Small,
+                },
+            ));
+            rows.push(row("Höhe der Bins", Node::mm("height", d.height, 0.0, 1000.0)));
+        } else {
+            rows.push(row("Breite", Node::mm("width", d.width, 42.0, 1500.0)));
+            rows.push(row("Tiefe", Node::mm("depth", d.depth, 42.0, 1500.0)));
+            rows.push(row("Höhe innen", Node::mm("height", d.height, 0.0, 1000.0)));
+            rows.push(row(
+                "Belegung",
+                Node::Checkbox {
+                    id: "cover".into(),
+                    label: "Zellen dürfen frei bleiben".into(),
+                    checked: o.cover == Cover::Partial,
+                    enabled: true,
+                },
+            ));
+        }
+        let drawer_rows = vec![
+            row("Randzone ab", Node::mm("edge_threshold", o.edge_threshold, 0.0, 42.0)),
+            row(
+                "Randbins",
+                select(
+                    "edge_mode",
+                    &[
+                        ("to_floor", "bis zum Boden (ohne Stützen)"),
+                        ("resting", "aufliegend (Stützen nötig)"),
+                        ("none", "keine – Rand bleibt Platte"),
+                    ],
+                    match o.edge_mode {
+                        EdgeMode::ToFloor => "to_floor",
+                        EdgeMode::Resting => "resting",
+                        EdgeMode::None => "none",
+                    },
                 ),
-                row(
-                    "Raster Y",
-                    select(
-                        "align_y",
-                        &[("start", "vorne bündig"), ("center", "mittig"), ("end", "hinten bündig")],
-                        align(o.align[1]),
-                    ),
+            ),
+            row(
+                "Raster X",
+                select(
+                    "align_x",
+                    &[("start", "links bündig"), ("center", "mittig"), ("end", "rechts bündig")],
+                    align(o.align[0]),
                 ),
-            ],
-            submit: None,
-        };
+            ),
+            row(
+                "Raster Y",
+                select(
+                    "align_y",
+                    &[("start", "vorne bündig"), ("center", "mittig"), ("end", "hinten bündig")],
+                    align(o.align[1]),
+                ),
+            ),
+        ];
+        if !surface {
+            rows.extend(drawer_rows);
+        }
+        let drawer = Node::Form { id: "drawer".into(), rows, submit: None };
         let plate = Node::Form {
             id: "plate".into(),
             rows: vec![row(
@@ -1365,8 +1408,18 @@ impl GuestPanel for DrawerPanel {
                     Zone::Edge => format!("{:.1} mm Randzone", g.margin(side)),
                     Zone::Solid => format!("{:.1} mm fest", g.margin(side)),
                 };
-                left.push(Node::Label {
-                    text: format!(
+                let text = if p.kind == Kind::Surface {
+                    format!(
+                        "Fläche {} × {} Zellen ({:.0} × {:.0} mm) · {} Plattenteile · {:.0} % belegt",
+                        g.cells[0],
+                        g.cells[1],
+                        g.plate[0],
+                        g.plate[1],
+                        p.pieces.len(),
+                        p.usable_area()
+                    )
+                } else {
+                    format!(
                         "Raster {} × {} ({:.0} × {:.0} mm) · L/R {} / {} · V/H {} / {} · {} Plattenteile · {:.0} % nutzbar",
                         g.cells[0],
                         g.cells[1],
@@ -1378,9 +1431,9 @@ impl GuestPanel for DrawerPanel {
                         zone(Side::Back),
                         p.pieces.len(),
                         p.usable_area()
-                    ),
-                    style: meshgrove_plugin_api::ui::TextStyle::Small,
-                });
+                    )
+                };
+                left.push(Node::Label { text, style: TextStyle::Small });
                 let language = guest::info().language;
                 for w in &p.warnings {
                     left.push(Node::Notice { level: Level::Warn, text: w.text(&language) });
@@ -1473,6 +1526,23 @@ impl GuestPanel for DrawerPanel {
                 self.mix_changed(&id[5..], value.as_f64().unwrap_or(0.0).max(0.0) as u32)
             }
             Event::Click { id } if id.starts_with("mix:") => self.mix_clicked(&id[4..]),
+            Event::Changed { id, value } if id == "cells_x" || id == "cells_y" => {
+                // A surface is sized in cells; the mm follow.
+                let mut s = self.state.borrow_mut();
+                let d = &s.project.drawer;
+                let mut cells = s
+                    .project
+                    .options
+                    .cells
+                    .unwrap_or([(d.width / GRID).floor().max(1.0) as u32, (d.depth / GRID).floor().max(1.0) as u32]);
+                cells[usize::from(id == "cells_y")] = (value.as_f64().unwrap_or(1.0).round().max(1.0) as u32).min(35);
+                s.project.options.cells = Some(cells);
+                s.project.drawer.width = f64::from(cells[0]) * GRID;
+                s.project.drawer.depth = f64::from(cells[1]) * GRID;
+                drop(s);
+                self.changed();
+                Vec::new()
+            }
             Event::Changed { id, value } if id == "left_tabs" => {
                 self.state.borrow_mut().tab = value.as_u64().unwrap_or(0) as usize;
                 Vec::new()
@@ -1503,6 +1573,15 @@ impl GuestPanel for DrawerPanel {
                         ("height", Some(v)) => s.project.drawer.height = v,
                         ("edge_threshold", Some(v)) => o.edge_threshold = v,
                         ("bins", Some(v)) => s.bins_wanted = v.max(0.0) as u32,
+                        ("kind", _) => {
+                            o.kind = if text.as_deref() == Some("surface") { Kind::Surface } else { Kind::Drawer };
+                            if o.kind == Kind::Drawer {
+                                o.cells = None;
+                            }
+                        }
+                        ("cover", _) => {
+                            o.cover = if value.as_bool().unwrap_or(false) { Cover::Partial } else { Cover::Exact }
+                        }
                         ("magnet_d", Some(v)) => s.project.profile.magnet.d = v,
                         ("magnet_h", Some(v)) => s.project.profile.magnet.h = v,
                         ("model_id", _) => s.model_id = text.unwrap_or_default(),

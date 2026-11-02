@@ -5,9 +5,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::grid::{Grid, PlanError, Zone};
-use crate::layout::{Repair, repair, validate};
-use crate::model::{BinSpec, DrawerProject, EdgeMode, HolderSpec, Placement, PlateFloor, Side};
-use crate::solver::{Heights, auto_layout, heights};
+use crate::layout::{Repair, repair_cover, validate_cover};
+use crate::model::{BinSpec, Cover, DrawerProject, EdgeMode, HolderSpec, Kind, Placement, PlateFloor, Side};
+use crate::solver::{Heights, auto_layout_cover, heights};
 use crate::spec::{BIN_GAP, EDGE_GAP, GRID, LIP_H, bin_outer, body_height};
 use crate::split::{extents, split_plate};
 use crate::warn::Warning;
@@ -96,6 +96,8 @@ pub struct Plan {
     pub placements: Vec<PlacedPart>,
     pub parts: Vec<BomEntry>,
     pub magnets: bool,
+    pub kind: Kind,
+    pub cover: Cover,
     pub warnings: Vec<Warning>,
     pub repairs: Vec<Repair>,
 }
@@ -199,18 +201,20 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
     warnings.extend(hw);
 
     let mut repairs = Vec::new();
-    let placements = if project.placements.is_empty() {
-        let (p, w) = auto_layout(&grid, &project.items, h);
+    // A surface stays open where nothing is put; a drawer is covered unless asked otherwise.
+    let cover = if o.kind == Kind::Surface { Cover::Partial } else { o.cover };
+    let placements = if project.placements.is_empty() && (cover == Cover::Exact || !project.items.is_empty()) {
+        let (p, w) = auto_layout_cover(&grid, &project.items, h, cover);
         warnings.extend(w);
         p
-    } else if validate(nx, ny, &project.placements).is_ok() {
+    } else if validate_cover(nx, ny, &project.placements, cover).is_ok() {
         project.placements.clone()
     } else {
-        let (p, r) = repair(nx, ny, project.placements.clone(), h);
+        let (p, r) = repair_cover(nx, ny, project.placements.clone(), h, cover);
         repairs = r;
         p
     };
-    validate(nx, ny, &placements)?;
+    validate_cover(nx, ny, &placements, cover)?;
 
     let placed: Vec<(Placement, [f64; 4])> = placements
         .into_iter()
@@ -291,6 +295,8 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
         placements: out,
         parts,
         magnets,
+        kind: o.kind,
+        cover,
         warnings,
         repairs,
     })
@@ -385,6 +391,35 @@ mod tests {
             placements: p.placements,
             ..DrawerProject::default()
         }
+    }
+
+    #[test]
+    fn a_surface_stays_open_where_nothing_stands() {
+        use crate::model::{ItemKind, ItemRequest, Kind};
+        let options = PlateOptions { kind: Kind::Surface, ..PlateOptions::default() };
+        let empty = DrawerProject {
+            drawer: DrawerSpec { name: "Bank".into(), width: 600.0, depth: 300.0, height: 100.0 },
+            options: options.clone(),
+            ..DrawerProject::default()
+        };
+        let p = plan(&empty).unwrap();
+        assert_eq!(p.grid.cells, [14, 7]);
+        assert!(p.placements.is_empty(), "no bins are filled in");
+        assert!(p.parts.iter().all(|b| matches!(b.part, PartSpec::Plate { .. })));
+        assert_eq!(p.usable_area(), 0.0);
+        assert!(crate::text::ascii_plan(&p).contains(" .  .  . "));
+        // One item is placed, the rest of the grid stays free.
+        let one = DrawerProject {
+            items: vec![ItemRequest {
+                name: "Bits".into(),
+                quantity: 1,
+                what: ItemKind::Bin { cells: [2, 2], units: Some(6), dividers: [1, 1] },
+            }],
+            ..empty.clone()
+        };
+        let p = plan(&one).unwrap();
+        assert_eq!(p.placements.len(), 1);
+        assert!(p.warnings.is_empty(), "{:?}", p.warnings);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 //! layout. Tall things go to the back, low things to the front, the rest is filled with bins.
 
 use crate::grid::Grid;
-use crate::model::{BinSpec, HolderSpec, ItemKind, ItemRequest, Placement};
+use crate::model::{BinSpec, Cover, HolderSpec, ItemKind, ItemRequest, Placement};
 use crate::spec::{FLOOR_Z, GRID, HEADROOM, LIP_H, UNIT, WALL};
 use crate::warn::Warning;
 
@@ -122,6 +122,16 @@ impl Occupancy {
 
 /// Places the requested items and fills the rest of the grid with bins.
 pub fn auto_layout(grid: &Grid, items: &[ItemRequest], h: Heights) -> (Vec<Placement>, Vec<Warning>) {
+    auto_layout_cover(grid, items, h, Cover::Exact)
+}
+
+/// [`auto_layout`] for a cover: with `Partial` the cells no item needs stay free.
+pub fn auto_layout_cover(
+    grid: &Grid,
+    items: &[ItemRequest],
+    h: Heights,
+    cover: Cover,
+) -> (Vec<Placement>, Vec<Warning>) {
     let [nx, ny] = grid.cells;
     let mut occ = Occupancy::new(nx, ny);
     let mut placements = Vec::new();
@@ -152,7 +162,9 @@ pub fn auto_layout(grid: &Grid, items: &[ItemRequest], h: Heights) -> (Vec<Place
         let label = (!w.name.is_empty()).then(|| w.name.clone());
         placements.push(Placement { holder: w.holder, label, ..Placement::bin(x, y, bin) });
     }
-    placements.extend(fill(&mut occ, h));
+    if cover == Cover::Exact {
+        placements.extend(fill(&mut occ, h));
+    }
     (placements, warnings)
 }
 

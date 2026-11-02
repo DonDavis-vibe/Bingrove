@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Align, EdgeMode, PlateFloor, PlateOptions, Side};
+use crate::model::{Align, EdgeMode, Kind, PlateFloor, PlateOptions, Side};
 use crate::profile::MagnetSpec;
 use crate::spec::{BP_H, GRID};
 use crate::warn::Warning;
@@ -49,6 +49,30 @@ pub enum PlanError {
 
 impl Grid {
     pub fn new(drawer: [f64; 2], o: &PlateOptions, magnet: &MagnetSpec) -> Result<(Grid, Vec<Warning>), PlanError> {
+        let floor = match o.floor {
+            PlateFloor::Open => 0.0,
+            PlateFloor::Magnets => magnet.h + magnet.floor,
+        };
+        if o.kind == Kind::Surface {
+            // The plate is the grid: as many cells as the size holds (or as asked), no margins.
+            let fit = drawer.map(|d| (d / GRID + 1e-9).floor().max(0.0) as u32);
+            let cells = o.cells.unwrap_or(fit);
+            if cells[0] == 0 || cells[1] == 0 {
+                return Err(PlanError::TooSmall(drawer[0], drawer[1]));
+            }
+            let plate = cells.map(|c| c as f64 * GRID);
+            let grid = Grid {
+                cells,
+                plate,
+                origin: [0.0; 2],
+                margins: [0.0; 4],
+                zones: [Zone::Solid; 4],
+                edge_mode: EdgeMode::None,
+                rim: o.rim,
+                floor,
+            };
+            return Ok((grid, Vec::new()));
+        }
         let plate = drawer.map(|d| d - o.clearance);
         let fit = plate.map(|p| (p / GRID + 1e-9).floor().max(0.0) as u32);
         if fit[0] == 0 || fit[1] == 0 {
@@ -83,10 +107,6 @@ impl Grid {
         let zones = match o.edge_mode {
             EdgeMode::None => [Zone::Solid; 4],
             _ => margins.map(|m| if m >= o.edge_threshold { Zone::Edge } else { Zone::Solid }),
-        };
-        let floor = match o.floor {
-            PlateFloor::Open => 0.0,
-            PlateFloor::Magnets => magnet.h + magnet.floor,
         };
         let grid = Grid { cells, plate, origin, margins, zones, edge_mode: o.edge_mode, rim: o.rim, floor };
         if grid.zones.contains(&Zone::Edge) && grid.edge_mode == EdgeMode::Resting {
@@ -185,6 +205,19 @@ mod tests {
         assert!(!g.cut_back(Side::Left));
         // Nothing to gain from moving the grid against a wall, so no advice about it.
         assert!(w.is_empty());
+    }
+
+    #[test]
+    fn a_surface_is_the_grid_itself() {
+        let o = PlateOptions { kind: Kind::Surface, ..PlateOptions::default() };
+        let (g, w) = grid(600.0, 300.0, o.clone());
+        assert_eq!(g.cells, [14, 7]);
+        assert_eq!(g.plate, [588.0, 294.0]);
+        assert_eq!(g.margins, [0.0; 4]);
+        assert_eq!(g.zones, [Zone::Solid; 4]);
+        assert!(w.is_empty());
+        let (g, _) = grid(600.0, 300.0, PlateOptions { cells: Some([10, 6]), ..o });
+        assert_eq!(g.plate, [420.0, 252.0], "asked for fewer cells, the plate shrinks with them");
     }
 
     #[test]

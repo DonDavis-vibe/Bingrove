@@ -8,7 +8,7 @@ use bingrove_core::export::{ExportOptions, save_stl};
 use bingrove_core::geom::{Part, baseplate, bin, tape};
 use bingrove_core::layout::{bill_of_bins, validate};
 use bingrove_core::model::{
-    Align, BedSpec, BinSpec, DrawerProject, DrawerSpec, EdgeMode, ItemKind, ItemRequest, MagnetMode, PlateFloor,
+    Align, BedSpec, BinSpec, DrawerProject, DrawerSpec, EdgeMode, ItemKind, ItemRequest, Kind, MagnetMode, PlateFloor,
     PlateOptions, TapeSpec,
 };
 use bingrove_core::presets::Preset;
@@ -67,6 +67,9 @@ enum Cmd {
         /// Keine Randbins: der Rand bleibt Platte, alle Bins sind 42·n
         #[arg(long)]
         ohne_randbins: bool,
+        /// Eine Fläche statt einer Schublade: die Platte ist das Raster, Zellen bleiben frei
+        #[arg(long)]
+        flaeche: bool,
         /// Raster an eine Wand schieben statt mittig: l, r, v, h (links/rechts/vorne/hinten)
         #[arg(long, value_delimiter = ',')]
         buendig: Vec<String>,
@@ -279,6 +282,7 @@ fn drawer(cli: Cli) -> Result<(), String> {
         schwelle,
         aufliegend,
         ohne_randbins,
+        flaeche,
         buendig,
         plan: only_plan,
         zusammenbau,
@@ -308,6 +312,7 @@ fn drawer(cli: Cli) -> Result<(), String> {
     let project = DrawerProject {
         drawer: DrawerSpec { name: name.clone(), width: v[0], depth: v[1], height: v.get(2).copied().unwrap_or(0.0) },
         options: PlateOptions {
+            kind: if flaeche { Kind::Surface } else { Kind::Drawer },
             align,
             edge_threshold: schwelle,
             edge_mode: match (ohne_randbins, aufliegend) {

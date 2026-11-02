@@ -37,7 +37,8 @@ pub fn ascii_plan(plan: &Plan) -> String {
         zone(Side::Front),
         zone(Side::Back)
     );
-    let mut cell = vec![vec![String::new(); nx as usize]; ny as usize];
+    // Free cells show the plate.
+    let mut cell = vec![vec![".".to_string(); nx as usize]; ny as usize];
     for (i, p) in plan.placements.iter().enumerate() {
         let [w, d] = p.placement.cells();
         for y in p.placement.y..p.placement.y + d {
@@ -55,7 +56,7 @@ pub fn ascii_plan(plan: &Plan) -> String {
         let _ = writeln!(s, " {}{line}{}", edge(Side::Left), edge(Side::Right));
     }
     let _ = writeln!(s, " {}", edge(Side::Front).to_string().repeat(width + 2));
-    let _ = writeln!(s, "front   (~ edge zone that bins reach into, # solid plate margin)");
+    let _ = writeln!(s, "front   (~ edge zone that bins reach into, # solid plate margin, . free cell)");
     for (i, p) in plan.placements.iter().enumerate() {
         let part = &plan.parts[p.part];
         let label = p.placement.label.as_deref().map(|l| format!(" – {l}")).unwrap_or_default();

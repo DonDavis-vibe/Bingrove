@@ -10,7 +10,7 @@ mod panel;
 mod preview;
 
 use bingrove_core::export::{self, ExportOptions, FileKind, PROJECT_FORMAT, ProjectFile};
-use bingrove_core::model::{Align, DrawerProject, DrawerSpec, EdgeMode, PlateFloor, PlateOptions};
+use bingrove_core::model::{Align, Cover, DrawerProject, DrawerSpec, EdgeMode, Kind, PlateFloor, PlateOptions};
 use bingrove_core::plan::{Plan, plan};
 use bingrove_core::presets::Preset;
 use bingrove_core::profile::Profile;
@@ -52,6 +52,12 @@ pub(crate) struct DrawerArgs {
     pub placements: Vec<bingrove_core::model::Placement>,
     /// How many bins the drawer should have; the evenest mix of sizes that fits is laid out.
     pub bins: Option<u32>,
+    /// `drawer` (default) or `surface`: a plate that is the grid itself, bins only where put.
+    pub kind: Option<Kind>,
+    /// Fewer cells than the size holds (a surface: its size in cells).
+    pub cells: Option<[u32; 2]>,
+    /// `exact` (default for drawers) or `partial`: cells may stay free.
+    pub cover: Option<Cover>,
     pub edge_threshold: Option<f64>,
     pub edge_mode: Option<EdgeMode>,
     pub align: Option<[Align; 2]>,
@@ -92,6 +98,9 @@ impl DrawerArgs {
         }
         project.items = self.items.clone();
         project.options = PlateOptions {
+            kind: self.kind.unwrap_or_default(),
+            cells: self.cells,
+            cover: self.cover.unwrap_or_default(),
             edge_threshold: self.edge_threshold.unwrap_or(10.0),
             edge_mode: self.edge_mode.unwrap_or_default(),
             align: self.align.unwrap_or_default(),
@@ -241,6 +250,9 @@ fn drawer_schema(with_lists: bool) -> Value {
         "depth": {"type": "number", "description": "inner depth in mm (y, front to back)"},
         "height": {"type": "number", "description": "inner height in mm; 0 if unknown (bins then get 6 units)"},
         "preset": {"type": "string", "description": "a known drawer instead of sizes: see options"},
+        "kind": {"type": "string", "enum": ["drawer", "surface"], "description": "drawer (default): an insert that fills the drawer's inner size; surface: a plate for a bench or desk that is the grid itself (cells x 42 mm, no margins), where cells stay free unless something is put there"},
+        "cells": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2, "description": "grid cells [x, y]; for a surface its size, for a drawer fewer than fit"},
+        "cover": {"type": "string", "enum": ["exact", "partial"], "description": "exact (default): bins cover every cell, gaps are filled; partial: cells may stay free (the plate shows). A surface is always partial"},
         "bins": {"type": "integer", "description": "how many compartments (bins) the drawer should have, when nothing else is asked for: the evenest mix of bin sizes that tiles the grid is laid out, tall at the back"},
         "items": {"type": "array", "description": "what should go in; the solver places them (tall at the back) and fills the rest with bins", "items": {
             "type": "object",

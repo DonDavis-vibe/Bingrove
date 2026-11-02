@@ -594,10 +594,46 @@ pub enum PlateFloor {
     Magnets,
 }
 
+/// What the plate is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Kind {
+    /// An insert for a drawer: the plate fills the inner size, bins cover the grid.
+    #[default]
+    Drawer,
+    /// A surface such as a workbench top: the plate is the grid itself, no walls around it,
+    /// no margins, and bins stand only where something is put.
+    Surface,
+}
+
+/// Whether bins have to cover every cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Cover {
+    /// Every cell exactly once; gaps are filled with bins.
+    #[default]
+    Exact,
+    /// Cells may stay free (the plate shows); only overlaps and bins outside the grid are wrong.
+    Partial,
+}
+
+/// How the plate holds to a surface and to its neighbouring pieces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Mount {
+    /// Countersunk screw holes in the cell corners.
+    pub screws: bool,
+    /// Dovetail connectors along the cut edges between pieces.
+    pub connectors: bool,
+}
+
 /// How a drawer's plate is laid out.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PlateOptions {
+    pub kind: Kind,
+    pub cover: Cover,
+    pub mount: Mount,
     /// Plate = drawer minus this, per axis.
     pub clearance: f64,
     pub align: [Align; 2],
@@ -616,6 +652,9 @@ pub struct PlateOptions {
 impl Default for PlateOptions {
     fn default() -> Self {
         PlateOptions {
+            kind: Kind::Drawer,
+            cover: Cover::Exact,
+            mount: Mount::default(),
             clearance: CLEARANCE,
             align: [Align::Center; 2],
             edge_threshold: 10.0,
