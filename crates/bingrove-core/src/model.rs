@@ -47,6 +47,8 @@ pub struct BinSpec {
     /// Pockets for particular things, cut into a solid insert that fills the bin to the
     /// deepest pocket plus a floor.
     pub cutouts: Vec<Cutout>,
+    /// Engraved on the label shelf (or the front wall without one).
+    pub label_text: Option<String>,
 }
 
 impl Default for BinSpec {
@@ -61,6 +63,7 @@ impl Default for BinSpec {
             label_tab: false,
             scoop: 0,
             cutouts: vec![],
+            label_text: None,
         }
     }
 }
@@ -153,21 +156,164 @@ impl RoundItem {
     }
 }
 
-/// Standing round things in a grid of holes.
+/// The outline of a hole: `Round` for cylinders, `Hex` across flats (bits, hex shanks),
+/// `Square` with rounded corners.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HoleShape {
+    #[default]
+    Round,
+    Hex,
+    Square,
+}
+
+/// Standing things in a grid of holes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HolesSpec {
     pub item: RoundItem,
+    pub shape: HoleShape,
     pub cells: [u32; 2],
     /// Height in units; from the item when absent (about half of it stays visible).
     pub units: Option<u32>,
     /// Air around each item.
     pub clearance: f64,
+    /// Hole depth; about 55 % of the item's height when absent.
+    pub depth: Option<f64>,
+    /// Centre distance; item plus clearance plus wall when absent.
+    pub pitch: Option<f64>,
+    /// Holes across and down; as many as fit when absent.
+    pub count: Option<[u32; 2]>,
+    /// 45° chamfer at the mouth of each hole, mm.
+    pub chamfer: f64,
+    /// Engraved on the front wall.
+    pub label: Option<String>,
 }
 
 impl Default for HolesSpec {
     fn default() -> Self {
-        HolesSpec { item: RoundItem::Aa, cells: [1, 1], units: None, clearance: 0.6 }
+        HolesSpec {
+            item: RoundItem::Aa,
+            shape: HoleShape::Round,
+            cells: [1, 1],
+            units: None,
+            clearance: 0.6,
+            depth: None,
+            pitch: None,
+            count: None,
+            chamfer: 0.8,
+            label: None,
+        }
+    }
+}
+
+impl HolesSpec {
+    /// How deep the holes go.
+    pub fn depth(&self) -> f64 {
+        self.depth.unwrap_or(self.item.size().1 * 0.55)
+    }
+}
+
+/// One hole of a row: its own diameter and the size engraved in front of it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RowHole {
+    pub d: f64,
+    /// Hole depth; from the diameter when absent.
+    pub depth: Option<f64>,
+    pub label: String,
+}
+
+impl Default for RowHole {
+    fn default() -> Self {
+        RowHole { d: 10.0, depth: None, label: String::new() }
+    }
+}
+
+impl RowHole {
+    pub fn depth(&self) -> f64 {
+        self.depth.unwrap_or((self.d * 0.7).clamp(8.0, 25.0))
+    }
+}
+
+/// Rows of holes with their own sizes, each size engraved in front of its hole: sockets,
+/// screwdrivers, drills, hex keys. Rows run along x; with `stepped` every row further back
+/// stands one unit higher so the labels stay readable.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RowSpec {
+    pub rows: Vec<Vec<RowHole>>,
+    pub shape: HoleShape,
+    pub stepped: bool,
+    /// Air around each thing.
+    pub clearance: f64,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+    /// Engraved on the front wall, e.g. the set's name.
+    pub title: Option<String>,
+}
+
+impl Default for RowSpec {
+    fn default() -> Self {
+        RowSpec {
+            rows: vec![vec![RowHole::default()]],
+            shape: HoleShape::Round,
+            stepped: false,
+            clearance: 1.0,
+            cells: [2, 1],
+            units: None,
+            title: None,
+        }
+    }
+}
+
+impl RowSpec {
+    /// Deepest hole.
+    pub fn max_depth(&self) -> f64 {
+        self.rows.iter().flatten().map(RowHole::depth).fold(0.0, f64::max)
+    }
+
+    pub fn hole_count(&self) -> u32 {
+        self.rows.iter().map(|r| r.len() as u32).sum()
+    }
+
+    /// Whether any hole or the title carries text.
+    pub fn has_labels(&self) -> bool {
+        self.title.is_some() || self.rows.iter().flatten().any(|h| !h.label.trim().is_empty())
+    }
+}
+
+/// Parallel slots across the bin for flat things standing on edge: cards, swatches, blades,
+/// coin cells. Slots run along y and are spaced along x.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SlotSpec {
+    /// Slot width (the thing's thickness plus air).
+    pub width: f64,
+    pub depth: f64,
+    /// Centre distance.
+    pub pitch: f64,
+    /// Slot length along y; the bin's inside when absent.
+    pub length: Option<f64>,
+    /// Slots across; as many as fit when absent.
+    pub count: Option<u32>,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+    pub label: Option<String>,
+}
+
+impl Default for SlotSpec {
+    fn default() -> Self {
+        SlotSpec {
+            width: 3.0,
+            depth: 20.0,
+            pitch: 6.0,
+            length: None,
+            count: None,
+            cells: [2, 1],
+            units: None,
+            label: None,
+        }
     }
 }
 
@@ -195,13 +341,15 @@ pub struct TroughSpec {
     pub length: f64,
     /// Diameter of a handle at the back, for screwdrivers.
     pub handle: Option<f64>,
+    /// Troughs across the bin; as many as fit when absent.
+    pub count: Option<u32>,
     pub cells: [u32; 2],
     pub units: Option<u32>,
 }
 
 impl Default for TroughSpec {
     fn default() -> Self {
-        TroughSpec { diameter: 10.0, length: 150.0, handle: None, cells: [3, 1], units: None }
+        TroughSpec { diameter: 10.0, length: 150.0, handle: None, count: None, cells: [3, 1], units: None }
     }
 }
 
@@ -213,6 +361,8 @@ pub enum HolderSpec {
     Holes(HolesSpec),
     Bits(BitsSpec),
     Troughs(TroughSpec),
+    Row(RowSpec),
+    Slots(SlotSpec),
 }
 
 /// Air around hex bits (across flats) and a 1/4" bit's size.
@@ -227,6 +377,8 @@ impl HolderSpec {
             HolderSpec::Holes(h) => h.cells,
             HolderSpec::Bits(b) => b.cells,
             HolderSpec::Troughs(t) => t.cells,
+            HolderSpec::Row(r) => r.cells,
+            HolderSpec::Slots(s) => s.cells,
         }
     }
 
@@ -237,6 +389,8 @@ impl HolderSpec {
             HolderSpec::Holes(h) => h.cells = cells,
             HolderSpec::Bits(b) => b.cells = cells,
             HolderSpec::Troughs(t) => t.cells = cells,
+            HolderSpec::Row(r) => r.cells = cells,
+            HolderSpec::Slots(s) => s.cells = cells,
         }
         self
     }
@@ -246,9 +400,14 @@ impl HolderSpec {
         let from_depth = |depth: f64| ((FLOOR_Z + depth + 2.0) / UNIT).ceil().max(2.0) as u32;
         match self {
             HolderSpec::Tape(_) => 0,
-            HolderSpec::Holes(h) => h.units.unwrap_or_else(|| from_depth(h.item.size().1 * 0.55)),
+            HolderSpec::Holes(h) => h.units.unwrap_or_else(|| from_depth(h.depth())),
             HolderSpec::Bits(b) => b.units.unwrap_or_else(|| from_depth(BIT_DEPTH)),
             HolderSpec::Troughs(t) => t.units.unwrap_or_else(|| from_depth(t.handle.unwrap_or(t.diameter) + 1.0)),
+            HolderSpec::Row(r) => r.units.unwrap_or_else(|| {
+                let steps = if r.stepped { r.rows.len().saturating_sub(1) as f64 } else { 0.0 };
+                from_depth(r.max_depth() + steps * UNIT)
+            }),
+            HolderSpec::Slots(s) => s.units.unwrap_or_else(|| from_depth(s.depth)),
         }
     }
 
@@ -265,12 +424,28 @@ impl HolderSpec {
     pub fn slug(&self) -> String {
         match self {
             HolderSpec::Tape(_) => "tape".into(),
-            HolderSpec::Holes(h) => format!("akku_{}", h.item.slug()),
+            HolderSpec::Holes(h) => {
+                let shape = match h.shape {
+                    HoleShape::Round => "",
+                    HoleShape::Hex => "_hex",
+                    HoleShape::Square => "_eckig",
+                };
+                match h.item {
+                    RoundItem::Custom { .. } => format!("loch_{}{shape}", h.item.slug()),
+                    _ => format!("akku_{}", h.item.slug()),
+                }
+            }
             HolderSpec::Bits(_) => "bits".into(),
             HolderSpec::Troughs(t) => match t.handle {
                 Some(_) => format!("schraubendreher_d{}", crate::names::mm(t.diameter)),
                 None => format!("liegend_d{}", crate::names::mm(t.diameter)),
             },
+            HolderSpec::Row(r) => {
+                let title = r.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
+                let what = title.unwrap_or_else(|| format!("{}loch", r.hole_count()));
+                format!("reihe_{what}{}", if r.stepped { "_gestuft" } else { "" })
+            }
+            HolderSpec::Slots(s) => format!("schlitze_{}", crate::names::mm(s.width)),
         }
     }
 }
@@ -570,9 +745,13 @@ pub enum ItemKind {
         clearance: f64,
     },
     Tape(TapeSpec),
-    /// A holder with its own pattern; cells from `count` when the holder's cells are left at 1x1.
+    /// A holder with its own pattern, or a set of sizes from the catalogue by `set`; cells from
+    /// `count` when the holder's cells are left at 1x1.
     Holder {
-        holder: HolderSpec,
+        #[serde(default)]
+        holder: Option<HolderSpec>,
+        #[serde(default)]
+        set: Option<String>,
         #[serde(default)]
         count: Option<u32>,
     },

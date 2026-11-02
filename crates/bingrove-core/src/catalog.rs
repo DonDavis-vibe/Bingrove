@@ -1,24 +1,47 @@
-//! What holders there are and how big they come out, for the solver, the panel and the AI.
+//! What holders there are and how big they come out, for the solver, the panel and the AI:
+//! single holders (`catalog`) and sets of sizes for rows of holes (`sets`).
 
 use serde::Serialize;
 
-use crate::model::{BIT_ACROSS_FLATS, BIT_CLEARANCE, HolderSpec, HolesSpec, RoundItem, TroughSpec};
+use crate::model::{
+    BIT_ACROSS_FLATS, BIT_CLEARANCE, HolderSpec, HoleShape, HolesSpec, RoundItem, RowHole, RowSpec, SlotSpec,
+    TroughSpec,
+};
 use crate::spec::{GRID, WALL, bin_outer};
 
 /// Wall between two holes of a pattern.
 pub const HOLE_WALL: f64 = 1.6;
 /// Air between the pattern and the bin wall.
 pub const PATTERN_MARGIN: f64 = 0.8;
+/// Room in front of a row of holes for the engraved sizes.
+pub const ROW_LABEL_STRIP: f64 = 5.5;
+
+/// The inside of a bin of `cells` along one axis, less the pattern margin.
+fn inner(cells: u32) -> f64 {
+    bin_outer(cells) - 2.0 * WALL - 2.0 * PATTERN_MARGIN
+}
 
 /// How many of a pitch fit into the inside of a bin of `cells` along one axis.
 fn fit(cells: u32, pitch: f64) -> u32 {
-    let inner = bin_outer(cells) - 2.0 * WALL - 2.0 * PATTERN_MARGIN;
-    ((inner + HOLE_WALL) / pitch).floor().max(0.0) as u32
+    ((inner(cells) + HOLE_WALL) / pitch).floor().max(0.0) as u32
 }
 
-/// Hole pitch of a round item.
-pub fn hole_pitch(item: &RoundItem, clearance: f64) -> f64 {
-    item.size().0 + clearance + HOLE_WALL
+/// Cells needed along one axis for `mm` of pattern inside the walls.
+fn cells_needed(mm: f64) -> u32 {
+    ((mm + 2.0 * WALL + 2.0 * PATTERN_MARGIN + GRID - bin_outer(1)) / GRID).ceil().max(1.0) as u32
+}
+
+/// The widest extent of a hole of shape `shape` and size `d` (across flats for hex).
+pub fn across(shape: HoleShape, d: f64) -> f64 {
+    match shape {
+        HoleShape::Round | HoleShape::Square => d,
+        HoleShape::Hex => d * 2.0 / 3f64.sqrt(),
+    }
+}
+
+/// Hole pitch of a holes pattern.
+pub fn hole_pitch(spec: &HolesSpec) -> f64 {
+    spec.pitch.unwrap_or_else(|| across(spec.shape, spec.item.size().0 + spec.clearance) + HOLE_WALL)
 }
 
 pub fn bit_pitch() -> f64 {
@@ -28,8 +51,10 @@ pub fn bit_pitch() -> f64 {
 
 /// Holes across and down for a holder of `cells`.
 pub fn holes_grid(spec: &HolesSpec) -> [u32; 2] {
-    let pitch = hole_pitch(&spec.item, spec.clearance);
-    spec.cells.map(|c| fit(c, pitch))
+    spec.count.unwrap_or_else(|| {
+        let pitch = hole_pitch(spec);
+        spec.cells.map(|c| fit(c, pitch))
+    })
 }
 
 pub fn bits_grid(cells: [u32; 2]) -> [u32; 2] {
@@ -38,24 +63,62 @@ pub fn bits_grid(cells: [u32; 2]) -> [u32; 2] {
 
 /// Troughs across the bin (along y) for a trough holder.
 pub fn trough_count(spec: &TroughSpec) -> u32 {
-    let pitch = spec.handle.unwrap_or(spec.diameter) + 1.0 + HOLE_WALL;
-    fit(spec.cells[1], pitch)
+    spec.count.unwrap_or_else(|| {
+        let pitch = spec.handle.unwrap_or(spec.diameter) + 1.0 + HOLE_WALL;
+        fit(spec.cells[1], pitch)
+    })
 }
 
-/// Capacity of a holder: holes, bits, troughs or tape stacks.
+/// Slots across the bin (along x) for a slot holder.
+pub fn slot_count(spec: &SlotSpec) -> u32 {
+    spec.count.unwrap_or_else(|| {
+        let room = inner(spec.cells[0]);
+        if room < spec.width { 0 } else { ((room - spec.width) / spec.pitch).floor() as u32 + 1 }
+    })
+}
+
+/// Front-to-back pitch of one row of a row holder: its widest hole plus wall, plus the label
+/// strip when the holder carries text.
+pub fn row_pitch(spec: &RowSpec, row: &[RowHole]) -> f64 {
+    let widest = row.iter().map(|h| across(spec.shape, h.d + spec.clearance)).fold(0.0, f64::max);
+    widest + HOLE_WALL + if spec.has_labels() { ROW_LABEL_STRIP } else { 0.0 }
+}
+
+/// Width and depth the rows of a row holder need inside the bin.
+pub fn row_extent(spec: &RowSpec) -> [f64; 2] {
+    let width = spec
+        .rows
+        .iter()
+        .map(|r| r.iter().map(|h| across(spec.shape, h.d + spec.clearance) + HOLE_WALL).sum::<f64>() + HOLE_WALL)
+        .fold(0.0, f64::max);
+    let depth = spec.rows.iter().map(|r| row_pitch(spec, r)).sum::<f64>() + HOLE_WALL;
+    [width, depth]
+}
+
+/// The smallest footprint for a row holder.
+pub fn row_cells(spec: &RowSpec) -> [u32; 2] {
+    row_extent(spec).map(cells_needed)
+}
+
+/// Capacity of a holder: holes, bits, troughs, slots or tape stacks.
 pub fn capacity(h: &HolderSpec) -> u32 {
     match h {
         HolderSpec::Tape(t) => t.stacks[0] * t.stacks[1],
         HolderSpec::Holes(s) => holes_grid(s).iter().product(),
         HolderSpec::Bits(b) => bits_grid(b.cells).iter().product(),
         HolderSpec::Troughs(t) => trough_count(t),
+        HolderSpec::Row(r) => r.hole_count(),
+        HolderSpec::Slots(s) => slot_count(s),
     }
 }
 
-/// The smallest footprint (by area, then the squarer one) that holds `count` things.
+/// The smallest footprint (by area, then the squarer one) that holds `count` things; a row
+/// holder's footprint follows its holes.
 pub fn cells_for(h: &HolderSpec, count: u32) -> [u32; 2] {
-    if matches!(h, HolderSpec::Tape(_)) {
-        return h.cells();
+    match h {
+        HolderSpec::Tape(_) => return h.cells(),
+        HolderSpec::Row(r) => return row_cells(r),
+        _ => {}
     }
     let mut best: Option<[u32; 2]> = None;
     for area in 1..=36u32 {
@@ -98,6 +161,17 @@ pub struct CatalogEntry {
 
 pub fn catalog() -> Vec<CatalogEntry> {
     let holes = |item: RoundItem| HolderSpec::Holes(HolesSpec { item, ..HolesSpec::default() });
+    let shank = |d: f64, shape: HoleShape, depth: f64| {
+        HolderSpec::Holes(HolesSpec {
+            item: RoundItem::Custom { d, h: depth / 0.55 },
+            shape,
+            clearance: 0.5,
+            depth: Some(depth),
+            ..HolesSpec::default()
+        })
+    };
+    let slots =
+        |width: f64, depth: f64, pitch: f64| HolderSpec::Slots(SlotSpec { width, depth, pitch, ..SlotSpec::default() });
     vec![
         CatalogEntry { id: "tape", label: "Tape-Rollen", holder: HolderSpec::Tape(Default::default()) },
         CatalogEntry { id: "aa", label: "AA-Zellen", holder: holes(RoundItem::Aa) },
@@ -115,7 +189,7 @@ pub fn catalog() -> Vec<CatalogEntry> {
         },
         CatalogEntry {
             id: "screwdrivers",
-            label: "Schraubendreher",
+            label: "Schraubendreher (liegend)",
             holder: HolderSpec::Troughs(TroughSpec {
                 diameter: 8.0,
                 length: 200.0,
@@ -123,6 +197,241 @@ pub fn catalog() -> Vec<CatalogEntry> {
                 cells: [4, 1],
                 ..TroughSpec::default()
             }),
+        },
+        CatalogEntry { id: "shank_6", label: "Fräserschäfte 6 mm", holder: shank(6.0, HoleShape::Round, 22.0) },
+        CatalogEntry { id: "shank_6_35", label: "Fräserschäfte 1/4\"", holder: shank(6.35, HoleShape::Round, 22.0) },
+        CatalogEntry { id: "shank_8", label: "Fräserschäfte 8 mm", holder: shank(8.0, HoleShape::Round, 25.0) },
+        CatalogEntry { id: "shank_12", label: "Fräserschäfte 12 mm", holder: shank(12.0, HoleShape::Round, 30.0) },
+        CatalogEntry { id: "shank_12_7", label: "Fräserschäfte 1/2\"", holder: shank(12.7, HoleShape::Round, 30.0) },
+        CatalogEntry { id: "dremel", label: "Dremel-Schäfte 3.2 mm", holder: shank(3.2, HoleShape::Round, 15.0) },
+        CatalogEntry { id: "hex_5_16", label: "Hex-Schäfte 5/16\"", holder: shank(7.94, HoleShape::Hex, 12.0) },
+        CatalogEntry { id: "hex_3_8", label: "Hex-Schäfte 3/8\"", holder: shank(9.53, HoleShape::Hex, 14.0) },
+        CatalogEntry { id: "sd", label: "SD-Karten (Schlitze)", holder: slots(2.8, 16.0, 5.0) },
+        CatalogEntry { id: "usb", label: "USB-Sticks (Schlitze)", holder: slots(6.0, 14.0, 10.0) },
+        CatalogEntry { id: "cr2032", label: "Knopfzellen (Schlitze)", holder: slots(3.8, 14.0, 6.0) },
+        CatalogEntry { id: "swatches", label: "Filament-Swatches (Schlitze)", holder: slots(3.0, 24.0, 6.0) },
+        CatalogEntry { id: "blades", label: "Sägeblätter (Schlitze)", holder: slots(2.0, 40.0, 5.0) },
+        CatalogEntry {
+            id: "row",
+            label: "Lochreihe (eigene Größen)",
+            holder: HolderSpec::Row(RowSpec {
+                rows: vec![
+                    [6.0, 8.0, 10.0, 12.0, 14.0]
+                        .iter()
+                        .map(|&d| RowHole { d, depth: None, label: crate::names::mm(d) })
+                        .collect(),
+                ],
+                ..RowSpec::default()
+            }),
+        },
+    ]
+}
+
+/// A set of sizes for a row holder: sockets by drive, screwdrivers, hex keys, drills.
+#[derive(Debug, Clone, Serialize)]
+pub struct HolderSet {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub holder: HolderSpec,
+}
+
+/// Typical outside diameter of a six-point socket of nominal `size` mm on a drive, mm.
+/// Brands differ by a millimetre or two; the clearance and every hole stay editable.
+pub fn socket_od(drive: Drive, size_mm: f64) -> f64 {
+    let (min, add) = match drive {
+        Drive::Quarter => (11.8, 5.0),
+        Drive::ThreeEighths => (16.8, 7.0),
+        Drive::Half => (23.5, 8.5),
+    };
+    ((size_mm + add).max(min) * 10.0).round() / 10.0
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Drive {
+    Quarter,
+    ThreeEighths,
+    Half,
+}
+
+/// An inch fraction like "1 1/16" as mm.
+fn inch(text: &str) -> f64 {
+    let mut total = 0.0;
+    for part in text.split(' ') {
+        total += match part.split_once('/') {
+            Some((n, d)) => n.parse::<f64>().unwrap_or(0.0) / d.parse::<f64>().unwrap_or(1.0),
+            None => part.parse::<f64>().unwrap_or(0.0),
+        };
+    }
+    total * 25.4
+}
+
+fn socket_row(drive: Drive, sizes: &[(&str, f64)]) -> Vec<RowHole> {
+    sizes
+        .iter()
+        .map(|&(label, mm)| RowHole { d: socket_od(drive, mm), depth: None, label: label.to_string() })
+        .collect()
+}
+
+fn metric(sizes: &[f64]) -> Vec<(String, f64)> {
+    sizes.iter().map(|&s| (crate::names::mm(s), s)).collect()
+}
+
+fn imperial(sizes: &[&str]) -> Vec<(String, f64)> {
+    sizes.iter().map(|&s| (s.to_string(), inch(s))).collect()
+}
+
+fn row(rows: Vec<Vec<RowHole>>, title: &str, shape: HoleShape, stepped: bool) -> HolderSpec {
+    let mut spec = RowSpec { rows, shape, stepped, title: Some(title.into()), ..RowSpec::default() };
+    spec.cells = row_cells(&spec);
+    HolderSpec::Row(spec)
+}
+
+pub fn sets() -> Vec<HolderSet> {
+    let sockets = |drive: Drive, sizes: Vec<(String, f64)>| {
+        let refs: Vec<(&str, f64)> = sizes.iter().map(|(l, mm)| (l.as_str(), *mm)).collect();
+        socket_row(drive, &refs)
+    };
+    let plain = |sizes: &[f64], add: f64, depth: f64| -> Vec<RowHole> {
+        sizes.iter().map(|&s| RowHole { d: s + add, depth: Some(depth), label: crate::names::mm(s) }).collect()
+    };
+    vec![
+        HolderSet {
+            id: "sockets_1_4_mm",
+            label: "Nüsse 1/4\" metrisch (4–14)",
+            holder: row(
+                vec![sockets(
+                    Drive::Quarter,
+                    metric(&[4.0, 4.5, 5.0, 5.5, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0]),
+                )],
+                "1/4 Zoll",
+                HoleShape::Round,
+                false,
+            ),
+        },
+        HolderSet {
+            id: "sockets_3_8_mm",
+            label: "Nüsse 3/8\" metrisch (8–22)",
+            holder: row(
+                vec![sockets(
+                    Drive::ThreeEighths,
+                    metric(&[8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0]),
+                )],
+                "3/8 Zoll",
+                HoleShape::Round,
+                false,
+            ),
+        },
+        HolderSet {
+            id: "sockets_1_2_mm",
+            label: "Nüsse 1/2\" metrisch (10–32)",
+            holder: row(
+                vec![sockets(
+                    Drive::Half,
+                    metric(&[
+                        10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 24.0, 27.0, 30.0,
+                        32.0,
+                    ]),
+                )],
+                "1/2 Zoll",
+                HoleShape::Round,
+                false,
+            ),
+        },
+        HolderSet {
+            id: "sockets_1_4_in",
+            label: "Nüsse 1/4\" Zoll (5/32–9/16)",
+            holder: row(
+                vec![sockets(
+                    Drive::Quarter,
+                    imperial(&["5/32", "3/16", "7/32", "1/4", "9/32", "5/16", "11/32", "3/8", "7/16", "1/2", "9/16"]),
+                )],
+                "1/4 inch",
+                HoleShape::Round,
+                false,
+            ),
+        },
+        HolderSet {
+            id: "sockets_3_8_in",
+            label: "Nüsse 3/8\" Zoll (3/8–7/8)",
+            holder: row(
+                vec![sockets(
+                    Drive::ThreeEighths,
+                    imperial(&["3/8", "7/16", "1/2", "9/16", "5/8", "11/16", "3/4", "13/16", "7/8"]),
+                )],
+                "3/8 inch",
+                HoleShape::Round,
+                false,
+            ),
+        },
+        HolderSet {
+            id: "sockets_1_2_in",
+            label: "Nüsse 1/2\" Zoll (7/16–1 1/4)",
+            holder: row(
+                vec![sockets(
+                    Drive::Half,
+                    imperial(&[
+                        "7/16", "1/2", "9/16", "5/8", "11/16", "3/4", "13/16", "7/8", "15/16", "1", "1 1/16", "1 1/8",
+                        "1 1/4",
+                    ]),
+                )],
+                "1/2 inch",
+                HoleShape::Round,
+                false,
+            ),
+        },
+        HolderSet {
+            id: "sockets_1_4_both",
+            label: "Nüsse 1/4\" metrisch + Zoll (zwei Reihen, gestuft)",
+            holder: row(
+                vec![
+                    sockets(
+                        Drive::Quarter,
+                        imperial(&[
+                            "5/32", "3/16", "7/32", "1/4", "9/32", "5/16", "11/32", "3/8", "7/16", "1/2", "9/16",
+                        ]),
+                    ),
+                    sockets(
+                        Drive::Quarter,
+                        metric(&[4.0, 4.5, 5.0, 5.5, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0]),
+                    ),
+                ],
+                "1/4",
+                HoleShape::Round,
+                true,
+            ),
+        },
+        HolderSet {
+            id: "hex_keys",
+            label: "Innensechskant 1.5–10 (stehend)",
+            holder: row(
+                vec![plain(&[1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0], 0.0, 20.0)],
+                "Inbus",
+                HoleShape::Hex,
+                false,
+            ),
+        },
+        HolderSet {
+            id: "drills",
+            label: "Bohrer 1–10 × 0.5 (zwei Reihen)",
+            holder: row(
+                vec![
+                    plain(&[5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0], 0.4, 18.0),
+                    plain(&[1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0], 0.4, 14.0),
+                ],
+                "Bohrer",
+                HoleShape::Round,
+                true,
+            ),
+        },
+        HolderSet {
+            id: "screwdrivers_standing",
+            label: "Schraubendreher stehend (Klinge 2–8)",
+            holder: row(
+                vec![plain(&[2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0], 1.5, 30.0)],
+                "Schraubendreher",
+                HoleShape::Round,
+                false,
+            ),
         },
     ]
 }
@@ -147,5 +456,32 @@ mod tests {
         assert_eq!(cells_for(&sd, 3)[0], 4, "troughs keep their length");
         assert!(sd.units() >= 5);
         assert_eq!(aa.units(), 6, "half an AA cell shows above the holder");
+    }
+
+    #[test]
+    fn overrides_and_new_kinds() {
+        let fixed = HolesSpec { count: Some([3, 2]), pitch: Some(20.0), ..HolesSpec::default() };
+        assert_eq!(holes_grid(&fixed), [3, 2]);
+        assert_eq!(hole_pitch(&fixed), 20.0);
+        // Hex holes need their across-corners width.
+        let hex =
+            HolesSpec { shape: HoleShape::Hex, item: RoundItem::Custom { d: 8.0, h: 20.0 }, ..Default::default() };
+        assert!(hole_pitch(&hex) > 8.0 + 0.6 + HOLE_WALL);
+        // Swatch slots at 6 mm pitch: a 2-cell bin is 81.5 mm wide, 75.1 inside the margins.
+        let swatches = catalog().into_iter().find(|c| c.id == "swatches").unwrap().holder;
+        assert_eq!(capacity(&swatches), 13);
+        assert!(capacity(&swatches.clone().with_cells(cells_for(&swatches, 20))) >= 20);
+        // A row holder's footprint follows its holes.
+        let set = sets().into_iter().find(|s| s.id == "sockets_1_4_mm").unwrap().holder;
+        let HolderSpec::Row(r) = &set else { panic!() };
+        assert_eq!(r.hole_count(), 13);
+        assert_eq!(r.cells[1], 1, "one row with labels fits a single cell deep");
+        assert!(r.cells[0] >= 5, "thirteen sockets need a long row: {:?}", r.cells);
+        assert_eq!(cells_for(&set, 1), r.cells);
+        assert_eq!(socket_od(Drive::Quarter, 13.0), 18.0);
+        assert_eq!(socket_od(Drive::Half, 10.0), 23.5);
+        assert!((inch("1 1/16") - 26.9875).abs() < 1e-9);
+        let two = sets().into_iter().find(|s| s.id == "sockets_1_4_both").unwrap().holder;
+        assert!(two.units() > set.units(), "the stepped second row adds a unit");
     }
 }

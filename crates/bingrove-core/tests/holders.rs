@@ -67,12 +67,90 @@ fn bits_and_troughs() {
         length: 200.0,
         handle: Some(30.0),
         cells: [4, 2],
-        units: None,
+        ..TroughSpec::default()
     });
     let part = holders::holder(&sd, &p);
     assert!(part.mesh().unwrap().is_closed(), "{}", part.name);
     assert!(capacity(&sd) >= 2);
     assert!(part.name.starts_with("halter_schraubendreher_d8_4x2_"));
+}
+
+#[test]
+fn rows_slots_and_shapes() {
+    let p = Profile::default();
+    // A metric 1/4" socket row: one strip, thirteen holes of growing size, a label strip in front.
+    let set = bingrove_core::catalog::sets().into_iter().find(|s| s.id == "sockets_1_4_mm").unwrap().holder;
+    let part = holders::holder(&set, &p);
+    let mesh = part.mesh().unwrap();
+    assert!(mesh.is_closed(), "{}", part.name);
+    assert!(part.name.starts_with("halter_reihe_1_4_Zoll_"), "{}", part.name);
+    let (lo, hi) = mesh.bbox();
+    let size = set.units() as f64 * UNIT + LIP_H;
+    assert!(((hi[2] - lo[2]) as f64 - size).abs() < 1e-3);
+    let cells = set.cells();
+    let shell = plain(cells, set.units(), &p);
+    let [w, d] = cells.map(bin_outer);
+    let insert_full = (w - 2.4) * (d - 2.4) * (size - LIP_H - 0.8 - 5.95);
+    let v = mesh.volume();
+    assert!(v > shell && v < shell + insert_full, "{v} vs shell {shell}");
+    // Holes take out at least the sum of their cylinders' lower halves.
+    let HolderSpec::Row(r) = &set else { panic!() };
+    let holes: f64 = r.rows[0].iter().map(|h| std::f64::consts::PI * (h.d / 2.0).powi(2) * h.depth() * 0.5).sum();
+    assert!(shell + insert_full - v > holes, "holes missing: {}", shell + insert_full - v);
+
+    // Two stepped rows stand a unit taller than one, and the back strip is higher than the front.
+    let two = bingrove_core::catalog::sets().into_iter().find(|s| s.id == "sockets_1_4_both").unwrap().holder;
+    assert_eq!(two.units(), set.units() + 1);
+    let part = holders::holder(&two, &p);
+    assert!(part.mesh().unwrap().is_closed(), "{}", part.name);
+    assert!(part.name.contains("_gestuft_"), "{}", part.name);
+
+    // Slots for swatches: thirteen in a 2 x 1 holder.
+    let swatches = catalog().into_iter().find(|c| c.id == "swatches").unwrap().holder;
+    let part = holders::holder(&swatches, &p);
+    let mesh = part.mesh().unwrap();
+    assert!(mesh.is_closed());
+    assert_eq!(part.name, "halter_schlitze_3_2x1_5u.stl");
+    let shell = plain([2, 1], swatches.units(), &p);
+    let [w, d] = [2, 1].map(bin_outer);
+    let insert_full = (w - 2.4) * (d - 2.4) * (swatches.size()[2] - LIP_H - 0.8 - 5.95);
+    let v = mesh.volume();
+    let slot_volume = 13.0 * 3.0 * (d - 2.4 - 1.6) * 24.0;
+    assert!(v < shell + insert_full - slot_volume * 0.8 && v > shell, "{v}");
+
+    // Hex shanks: a hex hole holder is watertight and named for its shape.
+    let hex = catalog().into_iter().find(|c| c.id == "hex_3_8").unwrap().holder;
+    let part = holders::holder(&hex, &p);
+    assert!(part.mesh().unwrap().is_closed(), "{}", part.name);
+    assert!(part.name.starts_with("halter_loch_d9.53_hex_"), "{}", part.name);
+}
+
+#[test]
+fn engraving_takes_material_and_names_the_part() {
+    let p = Profile::default();
+    let plain_bin = BinSpec { cells: [2, 1], units: 6, label_tab: true, ..BinSpec::default() };
+    let v0 = bin::bin(&plain_bin, &p).mesh().unwrap().volume();
+    let shelf = BinSpec { label_text: Some("M3 x 12".into()), ..plain_bin.clone() };
+    let part = bin::bin(&shelf, &p);
+    assert_eq!(part.name, "bin_2x1_6u_label_M3_x_12.stl");
+    let mesh = part.mesh().unwrap();
+    assert!(mesh.is_closed());
+    let v1 = mesh.volume();
+    assert!(v1 < v0 - 5.0 && v1 > v0 - 60.0, "shelf engraving: {v0} -> {v1}");
+    // Without a shelf the text goes into the front wall.
+    let front = BinSpec { label_tab: false, ..shelf.clone() };
+    let v2 = bin::bin(&front, &p).mesh().unwrap().volume();
+    let v_plain = bin::bin(&BinSpec { label_tab: false, ..plain_bin.clone() }, &p).mesh().unwrap().volume();
+    assert!(v2 < v_plain - 3.0 && v2 > v_plain - 40.0, "front engraving: {v_plain} -> {v2}");
+    // A row holder with a title is engraved on its front too and stays watertight.
+    let mut set = bingrove_core::catalog::sets().into_iter().find(|s| s.id == "drills").unwrap().holder;
+    let labelled = holders::holder(&set, &p).mesh().unwrap();
+    assert!(labelled.is_closed());
+    if let HolderSpec::Row(r) = &mut set {
+        r.title = None;
+    }
+    let untitled = holders::holder(&set, &p).mesh().unwrap().volume();
+    assert!(labelled.volume() < untitled, "the title is cut in: {} vs {untitled}", labelled.volume());
 }
 
 #[test]

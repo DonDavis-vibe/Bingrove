@@ -40,6 +40,33 @@ pub fn mm(v: f64) -> String {
     s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
+/// Free text as a file-name piece: ASCII letters and digits, umlauts spelled out, the rest
+/// becomes one underscore, at most 24 characters.
+pub fn slug(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        let piece: &str = match c {
+            'ä' => "ae",
+            'ö' => "oe",
+            'ü' => "ue",
+            'Ä' => "Ae",
+            'Ö' => "Oe",
+            'Ü' => "Ue",
+            'ß' => "ss",
+            c if c.is_ascii_alphanumeric() => {
+                out.push(c);
+                continue;
+            }
+            _ => "_",
+        };
+        if piece != "_" || !out.ends_with('_') {
+            out.push_str(piece);
+        }
+    }
+    let out = out.trim_matches('_');
+    out.chars().take(24).collect::<String>().trim_end_matches('_').to_string()
+}
+
 fn with_options(mut name: String, b: &BinSpec) -> String {
     let [gx, gy] = b.cells;
     if b.dividers != [1, 1] {
@@ -56,6 +83,9 @@ fn with_options(mut name: String, b: &BinSpec) -> String {
     }
     if !b.cutouts.is_empty() {
         name += &format!("_{}ausschnitt", b.cutouts.len());
+    }
+    if let Some(text) = b.label_text.as_deref().map(slug).filter(|s| !s.is_empty()) {
+        name += &format!("_{text}");
     }
     if !b.lip {
         name += "_ohne_rand";

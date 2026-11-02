@@ -7,6 +7,7 @@ pub mod holders;
 pub mod insert;
 pub mod kernel;
 pub mod tape;
+pub mod text;
 
 use kernel::{GeomError, Solid};
 

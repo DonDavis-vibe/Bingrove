@@ -217,6 +217,28 @@ pub fn edge_bin(b: &BinSpec, e: [f64; 4], mode: EdgeMode, rim: f64, p: &Profile)
     solid = subtract(solid, holes);
 
     let mut solid = translate(&solid, [-x0, -y0, 0.0]);
+    // The engraving: on the label shelf, read from the front, or on the front wall outside.
+    if let Some(text) = b.label_text.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        let shelf = b
+            .label_tab
+            .then(|| {
+                let tan = LABEL_ANGLE.to_radians().tan();
+                LABEL_DEPTH.min((h_body - floor_at(3) - 1.0) / tan).min((od - 2.0 * WALL) / 2.0)
+            })
+            .filter(|&depth| depth >= 3.0);
+        let room_x = ow - 2.0 * WALL - 4.0;
+        solid = match shelf {
+            Some(depth) => {
+                let height = super::text::fit_height(text, (depth - 2.5).min(5.0), room_x);
+                super::text::engrave(solid, text, [ow / 2.0, od - WALL - depth / 2.0, h_body], height.max(2.0), 0.6)
+            }
+            None => {
+                let height = super::text::fit_height(text, (h_body - FLOOR_Z - 3.0).min(6.0), room_x);
+                let z = FLOOR_Z + (h_body - FLOOR_Z) / 2.0;
+                super::text::engrave_front(solid, text, [ow / 2.0, 0.0, z], height.max(2.0), 0.5)
+            }
+        };
+    }
     if !b.cutouts.is_empty() {
         let top = super::insert::insert_top(&b.cutouts, h_body - DIVIDER_GAP);
         let cuts = b.cutouts.iter().map(|c| super::insert::cutout_solid(c, top, seg)).collect();

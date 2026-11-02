@@ -61,10 +61,26 @@ fn wants(items: &[ItemRequest]) -> Vec<Want> {
                     (cells, Some(units), [1, 1], None)
                 }
                 ItemKind::Tape(t) => (t.cells(), Some(0), [1, 1], Some(HolderSpec::Tape(t.clone()))),
-                ItemKind::Holder { holder, count } => {
+                ItemKind::Holder { holder, set, count } => {
+                    let from_set = set
+                        .as_deref()
+                        .and_then(|id| crate::catalog::sets().into_iter().find(|s| s.id == id))
+                        .map(|s| s.holder);
+                    let Some(holder) = from_set.or_else(|| holder.clone()) else {
+                        // Neither a holder nor a known set: a plain bin stands in for it.
+                        out.push(Want {
+                            name: item.name.clone(),
+                            cells: [1, 1],
+                            units: None,
+                            dividers: [1, 1],
+                            holder: None,
+                            order,
+                        });
+                        continue;
+                    };
                     let holder = match count {
-                        Some(n) => holder.clone().with_cells(crate::catalog::cells_for(holder, *n)),
-                        None => holder.clone(),
+                        Some(n) => holder.clone().with_cells(crate::catalog::cells_for(&holder, *n)),
+                        None => holder,
                     };
                     (holder.cells(), Some(holder.units()), [1, 1], Some(holder))
                 }
@@ -112,7 +128,9 @@ pub fn auto_layout(grid: &Grid, items: &[ItemRequest], h: Heights) -> (Vec<Place
     let mut warnings = Vec::new();
     for w in wants(items) {
         let tall = w.units.is_some_and(|u| u > h.front) || w.holder.is_some();
-        let spot = [w.cells, [w.cells[1], w.cells[0]]].into_iter().find_map(|cells| {
+        // A holder's pattern lies along its own axes, so only a plain bin may be turned.
+        let ways = if w.holder.is_some() { vec![w.cells] } else { vec![w.cells, [w.cells[1], w.cells[0]]] };
+        let spot = ways.into_iter().find_map(|cells| {
             let rows: Vec<u32> = if tall { (0..ny).rev().collect() } else { (0..ny).collect() };
             rows.into_iter().find_map(|y| (0..nx).find(|&x| occ.free(x, y, cells)).map(|x| (x, y, cells)))
         });

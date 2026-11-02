@@ -248,7 +248,8 @@ fn drawer_schema(with_lists: bool) -> Value {
                 "name": {"type": "string"},
                 "quantity": {"type": "integer", "default": 1},
                 "kind": {"type": "string", "enum": ["object", "bin", "tape", "holder"], "description": "object: size [x, y, z] mm of a thing to hold; bin: cells [w, d] and optional units (7 mm each); tape: od (roll diameter), stacks [nx, ny], height (rolls per stack); holder: a holder from options.holders (holes for batteries/pens, bits, troughs for lying things) with count"},
-                "holder": {"type": "object", "description": "for kind holder: {kind: holes, item: {item: aa|aaa|c|d|cell18650|cell21700|custom, d, h}} or {kind: bits} or {kind: troughs, diameter, length, handle} or {kind: tape, od, stacks, height}"},
+                "holder": {"type": "object", "description": "for kind holder: {kind: holes, item: {item: aa|aaa|c|d|cell18650|cell21700|custom, d, h}, shape: round|hex|square, depth, pitch, count: [nx, ny]} or {kind: bits} or {kind: troughs, diameter, length, handle, count} or {kind: tape, od, stacks, height} or {kind: slots, width, depth, pitch, count} or {kind: row, rows: [[{d, label}, ...], ...], stepped, shape, title} (sizes engraved); see options.holders for presets"},
+                "set": {"type": "string", "description": "for kind holder instead of holder: a set of sizes from options.sets, e.g. sockets_1_4_mm, drills, hex_keys"},
                 "count": {"type": "integer", "description": "for kind holder: how many things it must hold; the footprint follows"},
                 "size": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
                 "clearance": {"type": "number", "default": 2},
@@ -259,7 +260,7 @@ fn drawer_schema(with_lists: bool) -> Value {
             },
             "required": ["kind"]
         }},
-        "placements": {"type": "array", "description": "an exact layout instead of items: bins by cell (x from left, y from front, cell 0 0 front left) with cells [w, d], units, dividers [dx, dy]; anything that overlaps is moved, gaps are filled", "items": {
+        "placements": {"type": "array", "description": "an exact layout instead of items: bins by cell (x from left, y from front, cell 0 0 front left) with cells [w, d], units, dividers [dx, dy], label_tab, scoop, label_text (engraved on the label shelf, else on the front); anything that overlaps is moved, gaps are filled", "items": {
             "type": "object",
             "properties": {
                 "x": {"type": "integer"}, "y": {"type": "integer"},
@@ -343,8 +344,9 @@ impl Guest for Bingrove {
                         "defaults": PlateOptions::default(),
                         "grid_mm": bingrove_core::spec::GRID,
                         "unit_mm": bingrove_core::spec::UNIT,
-                        "item_kinds": ["object: size [x, y, z] mm", "bin: cells [w, d], units", "tape: od, stacks [nx, ny], height", "holder: holder {kind: holes|bits|troughs|tape, ...} and count"],
+                        "item_kinds": ["object: size [x, y, z] mm", "bin: cells [w, d], units", "tape: od, stacks [nx, ny], height", "holder: holder {kind: holes|bits|troughs|tape|slots|row, ...} or set (from sets) and count"],
                         "holders": bingrove_core::catalog::catalog(),
+                        "sets": bingrove_core::catalog::sets(),
                         "cutouts": ["box: at [x, y], size [w, d], depth", "cylinder: at [x, y], d, depth", "polygon: points [[x, y], ...], clearance, depth (mm from the bin's front-left corner)"],
                         "limits": {"drawer_mm": [42, 1500], "items": 100, "placements": 300},
                     }),

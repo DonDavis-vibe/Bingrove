@@ -2,7 +2,8 @@
 //! test of bins with different air to the baseplate.
 
 use super::Part;
-use super::kernel::{Solid, cuboid, cylinder, digits, rrect_prism, subtract, swept, translate, union};
+use super::kernel::{Solid, cuboid, cylinder, rrect_prism, subtract, swept, translate, union};
+use super::text;
 use crate::profile::Profile;
 use crate::spec::*;
 
@@ -26,7 +27,9 @@ pub fn magnet_ladder(p: &Profile) -> Part {
             &cylinder(p.magnet.h + 1.0, dia / 2.0, dia / 2.0, p.seg),
             [x, d - pitch / 2.0 - 2.0, h - p.magnet.h],
         ));
-        cuts.push(translate(&digits(&format!("{dia:.1}"), 4.0, 0.6 + 1.0), [x - 4.5, 2.5, h - 0.6]));
+        let label = format!("{dia:.1}");
+        let body = text::text_solid(&label, 4.0, text::stroke_for(4.0), 0.6 + 1.0);
+        cuts.push(translate(&body, [x - text::text_width(&label, 4.0) / 2.0, 2.5, h - 0.6]));
     }
     let bar = translate(&rrect_prism(w, d, 2.0, h, p.seg), [w / 2.0, d / 2.0, 0.0]);
     let name = format!("kalibrierung_magnete_{:.1}-{:.1}.stl", ds[0], ds[ds.len() - 1]);

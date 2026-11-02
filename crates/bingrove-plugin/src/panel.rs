@@ -5,10 +5,13 @@
 use std::cell::RefCell;
 use std::cmp::Ordering;
 
+use bingrove_core::catalog::{holes_grid, row_cells, sets};
 use bingrove_core::grid::Zone;
 use bingrove_core::model::{
-    Align, BinSpec, Cutout, DrawerProject, EdgeMode, HolderSpec, Placement, PlateFloor, RoundItem, Side,
+    Align, BinSpec, Cutout, DrawerProject, EdgeMode, HolderSpec, HoleShape, Placement, PlateFloor, RoundItem, RowHole,
+    Side,
 };
+use bingrove_core::names::mm;
 use bingrove_core::plan::{PartSpec, Plan, plan};
 use bingrove_core::silhouette::{self, Down};
 use bingrove_core::spec::{GRID, UNIT};
@@ -107,6 +110,8 @@ fn holder_label(h: &HolderSpec) -> String {
                 "liegend".into()
             }
         }
+        HolderSpec::Row(r) => r.title.clone().unwrap_or_else(|| format!("{} Löcher", r.hole_count())),
+        HolderSpec::Slots(_) => "Schlitze".into(),
     }
 }
 
@@ -123,12 +128,35 @@ fn set_holder(p: &mut Placement, id: &str) {
     }
 }
 
-/// The holder fields of the selection form ("sel_" stripped), all numbers.
-const HOLDER_FIELDS: [&str; 10] =
-    ["hole_d", "hole_h", "clear", "trough_d", "trough_len", "handle", "tape_od", "tape_h", "tape_sx", "tape_sy"];
+/// The holder fields of the selection form ("sel_" stripped) that carry numbers.
+const HOLDER_FIELDS: [&str; 22] = [
+    "hole_d",
+    "hole_h",
+    "clear",
+    "hole_depth",
+    "hole_pitch",
+    "hole_nx",
+    "hole_ny",
+    "hole_chamfer",
+    "trough_d",
+    "trough_len",
+    "handle",
+    "trough_n",
+    "tape_od",
+    "tape_h",
+    "tape_sx",
+    "tape_sy",
+    "slot_w",
+    "slot_depth",
+    "slot_pitch",
+    "slot_len",
+    "slot_n",
+    "row_clear",
+];
 
-/// Sets one holder field of placement `p`; a changed hole size makes the item a custom one.
+/// Sets one numeric holder field of placement `p`; a changed hole size makes the item a custom one.
 fn holder_field(p: &mut Placement, field: &str, v: f64) {
+    let whole = |v: f64| v.round().max(0.0) as u32;
     match (&mut p.holder, field) {
         (Some(HolderSpec::Holes(h)), "hole_d" | "hole_h") => {
             let (d, height) = h.item.size();
@@ -139,20 +167,78 @@ fn holder_field(p: &mut Placement, field: &str, v: f64) {
             };
         }
         (Some(HolderSpec::Holes(h)), "clear") => h.clearance = v.clamp(0.0, 5.0),
+        (Some(HolderSpec::Holes(h)), "hole_depth") => h.depth = (v > 0.0).then_some(v),
+        (Some(HolderSpec::Holes(h)), "hole_pitch") => h.pitch = (v > 0.0).then_some(v),
+        (Some(HolderSpec::Holes(h)), "hole_nx" | "hole_ny") => {
+            let mut c = h.count.unwrap_or_else(|| holes_grid(h));
+            c[usize::from(field == "hole_ny")] = whole(v);
+            h.count = (c[0] > 0 && c[1] > 0).then_some(c);
+        }
+        (Some(HolderSpec::Holes(h)), "hole_chamfer") => h.chamfer = v.clamp(0.0, 3.0),
         (Some(HolderSpec::Troughs(t)), "trough_d") => t.diameter = v.max(2.0),
         (Some(HolderSpec::Troughs(t)), "trough_len") => t.length = v.max(20.0),
         (Some(HolderSpec::Troughs(t)), "handle") => t.handle = (v > 0.0).then_some(v),
+        (Some(HolderSpec::Troughs(t)), "trough_n") => t.count = (v >= 1.0).then(|| whole(v)),
         (Some(HolderSpec::Tape(t)), "tape_od") => t.od = v.max(30.0),
-        (Some(HolderSpec::Tape(t)), "tape_h") => t.height = (v.round() as u32).clamp(1, 10),
-        (Some(HolderSpec::Tape(t)), "tape_sx") => t.stacks[0] = (v.round() as u32).clamp(1, 6),
-        (Some(HolderSpec::Tape(t)), "tape_sy") => t.stacks[1] = (v.round() as u32).clamp(1, 6),
+        (Some(HolderSpec::Tape(t)), "tape_h") => t.height = whole(v).clamp(1, 10),
+        (Some(HolderSpec::Tape(t)), "tape_sx") => t.stacks[0] = whole(v).clamp(1, 6),
+        (Some(HolderSpec::Tape(t)), "tape_sy") => t.stacks[1] = whole(v).clamp(1, 6),
+        (Some(HolderSpec::Slots(s)), "slot_w") => s.width = v.max(0.5),
+        (Some(HolderSpec::Slots(s)), "slot_depth") => s.depth = v.max(2.0),
+        (Some(HolderSpec::Slots(s)), "slot_pitch") => s.pitch = v.max(1.0),
+        (Some(HolderSpec::Slots(s)), "slot_len") => s.length = (v > 0.0).then_some(v),
+        (Some(HolderSpec::Slots(s)), "slot_n") => s.count = (v >= 1.0).then(|| whole(v)),
+        (Some(HolderSpec::Row(r)), "row_clear") => r.clearance = v.clamp(0.0, 5.0),
         _ => {}
     }
-    // Tape decides its own footprint and height from the rolls.
+    refresh_holder(p);
+}
+
+/// After a holder changed: a row's footprint follows its holes, tape its rolls, and the bin takes
+/// the holder's cells and height.
+fn refresh_holder(p: &mut Placement) {
+    if let Some(HolderSpec::Row(r)) = &mut p.holder {
+        r.cells = row_cells(r);
+    }
     if let Some(h) = &p.holder {
         p.bin.cells = h.cells();
         p.bin.units = h.units();
     }
+}
+
+fn shape_of(text: &str) -> HoleShape {
+    match text {
+        "hex" => HoleShape::Hex,
+        "square" => HoleShape::Square,
+        _ => HoleShape::Round,
+    }
+}
+
+/// "11.8=4, 13=5.5, 15" as holes: a bare number is size and label at once.
+fn parse_row(text: &str) -> Vec<RowHole> {
+    text.split([',', ';'])
+        .filter_map(|part| {
+            let part = part.trim();
+            let (d, label) = match part.split_once('=') {
+                Some((d, l)) => (d.trim(), l.trim()),
+                None => (part, part),
+            };
+            let d: f64 = d.parse().ok()?;
+            (d > 0.0).then(|| RowHole { d, depth: None, label: label.to_string() })
+        })
+        .collect()
+}
+
+/// The holes of a row as the text the user edits.
+fn row_text(holes: &[RowHole]) -> String {
+    holes
+        .iter()
+        .map(|h| {
+            let d = mm(h.d);
+            if h.label.is_empty() || h.label == d { d } else { format!("{d}={}", h.label) }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The catalogue id of a placement's holder: "none" for a plain bin, "custom" for a holder the
@@ -161,7 +247,8 @@ fn holder_id(p: &Placement) -> &'static str {
     match &p.holder {
         None => "none",
         Some(h) => {
-            catalog().into_iter().find(|c| c.holder.clone().with_cells(h.cells()) == *h).map_or("custom", |c| c.id)
+            let fallback = if matches!(h, HolderSpec::Row(_)) { "row" } else { "custom" };
+            catalog().into_iter().find(|c| c.holder.clone().with_cells(h.cells()) == *h).map_or(fallback, |c| c.id)
         }
     }
 }
@@ -701,8 +788,82 @@ impl DrawerPanel {
             ("edges", _, Some(on), _) => self.edit_selected(|p| p.edges.off = [!on; 4]),
             ("label", _, _, Some(t)) => self.edit_selected(|p| p.label = (!t.is_empty()).then(|| t.clone())),
             ("holder", _, _, Some(id)) => self.edit_selected(|p| set_holder(p, &id)),
+            ("engrave", _, _, Some(t)) => self.edit_selected(|p| p.bin.label_text = (!t.is_empty()).then(|| t.clone())),
+            ("hole_label" | "slot_label", _, _, Some(t)) => self.edit_selected(|p| {
+                let text = (!t.is_empty()).then(|| t.clone());
+                match &mut p.holder {
+                    Some(HolderSpec::Holes(h)) => h.label = text,
+                    Some(HolderSpec::Slots(s)) => s.label = text,
+                    _ => {}
+                }
+            }),
+            ("hole_shape", _, _, Some(t)) => self.edit_selected(|p| {
+                if let Some(HolderSpec::Holes(h)) = &mut p.holder {
+                    h.shape = shape_of(&t);
+                }
+                refresh_holder(p);
+            }),
+            ("row_shape", _, _, Some(t)) => self.edit_selected(|p| {
+                if let Some(HolderSpec::Row(r)) = &mut p.holder {
+                    r.shape = shape_of(&t);
+                }
+                refresh_holder(p);
+            }),
+            ("row_title", _, _, Some(t)) => self.edit_selected(|p| {
+                if let Some(HolderSpec::Row(r)) = &mut p.holder {
+                    r.title = (!t.is_empty()).then(|| t.clone());
+                }
+                refresh_holder(p);
+            }),
+            ("row_stepped", _, Some(on), _) => self.edit_selected(|p| {
+                if let Some(HolderSpec::Row(r)) = &mut p.holder {
+                    r.stepped = on;
+                }
+                refresh_holder(p);
+            }),
+            ("row_set", _, _, Some(id)) => {
+                if let Some(set) = sets().into_iter().find(|s| s.id == id) {
+                    self.edit_selected(|p| {
+                        p.holder = Some(set.holder.clone());
+                        refresh_holder(p);
+                    });
+                }
+            }
+            (f, _, _, Some(t)) if f.starts_with("row_holes:") => {
+                let Ok(k) = f["row_holes:".len()..].parse::<usize>() else { return Vec::new() };
+                let holes = parse_row(&t);
+                if holes.is_empty() {
+                    return vec![Effect::Toast {
+                        text: "Keine Größe erkannt: Ø oder Ø=Text, durch Komma".into(),
+                        level: Level::Warn,
+                    }];
+                }
+                self.edit_selected(|p| {
+                    if let Some(HolderSpec::Row(r)) = &mut p.holder
+                        && let Some(row) = r.rows.get_mut(k)
+                    {
+                        *row = holes.clone();
+                    }
+                    refresh_holder(p);
+                });
+            }
             _ => {}
         }
+        Vec::new()
+    }
+
+    /// Adds a row (a copy of the last) to or removes the last row from the selected row holders.
+    fn row_count(&self, add: bool) -> Vec<Effect> {
+        self.edit_selected(|p| {
+            if let Some(HolderSpec::Row(r)) = &mut p.holder {
+                if add {
+                    r.rows.push(r.rows.last().cloned().unwrap_or_default());
+                } else if r.rows.len() > 1 {
+                    r.rows.pop();
+                }
+            }
+            refresh_holder(p);
+        });
         Vec::new()
     }
 
@@ -762,6 +923,16 @@ impl DrawerPanel {
                 extras.push(check("sel_edges", "Rand nutzen", !first.edges.off.iter().all(|&o| o)));
             }
             rows.push(row("Ausstattung", Node::row(extras)));
+            rows.push(row(
+                "Gravur",
+                Node::TextInput {
+                    id: "sel_engrave".into(),
+                    value: first.bin.label_text.clone().unwrap_or_default(),
+                    hint: Some("auf der Label-Lasche, sonst vorne".into()),
+                    multiline: false,
+                    enabled: true,
+                },
+            ));
         }
         if chosen.len() == 1 {
             rows.push(row(
@@ -785,17 +956,120 @@ impl DrawerPanel {
             "Halter",
             Node::Select { id: "sel_holder".into(), options, selected: holder.into(), enabled: true },
         ));
+        let shape_select = |id: &str, shape: HoleShape| Node::Select {
+            id: id.into(),
+            options: [("round", "rund"), ("hex", "Sechskant"), ("square", "quadratisch")]
+                .iter()
+                .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
+                .collect(),
+            selected: match shape {
+                HoleShape::Round => "round",
+                HoleShape::Hex => "hex",
+                HoleShape::Square => "square",
+            }
+            .into(),
+            enabled: true,
+        };
         match &first.holder {
             Some(HolderSpec::Holes(h)) => {
                 let (dia, height) = h.item.size();
                 rows.push(row("Loch Ø", Node::mm("sel_hole_d", dia, 1.0, 80.0)));
+                rows.push(row("Form", shape_select("sel_hole_shape", h.shape)));
                 rows.push(row("Höhe des Dings", Node::mm("sel_hole_h", height, 5.0, 300.0)));
+                rows.push(row(
+                    "Tiefe (0 = aus der Höhe)",
+                    Node::mm("sel_hole_depth", h.depth.unwrap_or(0.0), 0.0, 200.0),
+                ));
                 rows.push(row("Spiel je Loch", Node::mm("sel_clear", h.clearance, 0.0, 5.0)));
+                rows.push(row("Teilung (0 = eng)", Node::mm("sel_hole_pitch", h.pitch.unwrap_or(0.0), 0.0, 200.0)));
+                let [nx, ny] = h.count.unwrap_or([0, 0]);
+                rows.push(row(
+                    "Anzahl quer × längs (0 = so viele wie passen)",
+                    Node::row(vec![int("sel_hole_nx", nx, 0, 40), int("sel_hole_ny", ny, 0, 40)]),
+                ));
+                rows.push(row("Fase", Node::mm("sel_hole_chamfer", h.chamfer, 0.0, 3.0)));
+                rows.push(row(
+                    "Gravur vorne",
+                    Node::TextInput {
+                        id: "sel_hole_label".into(),
+                        value: h.label.clone().unwrap_or_default(),
+                        hint: None,
+                        multiline: false,
+                        enabled: true,
+                    },
+                ));
+            }
+            Some(HolderSpec::Row(r)) => {
+                let mut options = vec![Choice { value: String::new(), label: "Satz laden …".into() }];
+                options.extend(sets().iter().map(|s| Choice { value: s.id.into(), label: s.label.into() }));
+                rows.push(row(
+                    "Satz",
+                    Node::Select { id: "sel_row_set".into(), options, selected: String::new(), enabled: true },
+                ));
+                rows.push(row(
+                    "Titel (graviert)",
+                    Node::TextInput {
+                        id: "sel_row_title".into(),
+                        value: r.title.clone().unwrap_or_default(),
+                        hint: Some("vorne am Halter".into()),
+                        multiline: false,
+                        enabled: true,
+                    },
+                ));
+                rows.push(row("Form", shape_select("sel_row_shape", r.shape)));
+                rows.push(row("Spiel je Loch", Node::mm("sel_row_clear", r.clearance, 0.0, 5.0)));
+                rows.push(row("Stufen", check("sel_row_stepped", "hintere Reihen eine Einheit höher", r.stepped)));
+                for (k, holes) in r.rows.iter().enumerate() {
+                    rows.push(row(
+                        &format!("Reihe {} (vorne = 1)", k + 1),
+                        Node::TextInput {
+                            id: format!("sel_row_holes:{k}"),
+                            value: row_text(holes),
+                            hint: Some("Ø oder Ø=Text, durch Komma getrennt".into()),
+                            multiline: false,
+                            enabled: true,
+                        },
+                    ));
+                }
+                rows.push(row(
+                    "Reihen",
+                    Node::row(vec![
+                        Node::button("sel_row_add", "+ Reihe"),
+                        Node::Button {
+                            id: "sel_row_del".into(),
+                            label: "− Reihe".into(),
+                            primary: false,
+                            enabled: r.rows.len() > 1,
+                        },
+                        small(format!("{} Löcher, {} × {} Zellen", r.hole_count(), r.cells[0], r.cells[1])),
+                    ]),
+                ));
+            }
+            Some(HolderSpec::Slots(sl)) => {
+                rows.push(row("Schlitzbreite", Node::mm("sel_slot_w", sl.width, 0.5, 30.0)));
+                rows.push(row("Tiefe", Node::mm("sel_slot_depth", sl.depth, 2.0, 200.0)));
+                rows.push(row("Teilung", Node::mm("sel_slot_pitch", sl.pitch, 1.0, 60.0)));
+                rows.push(row(
+                    "Länge (0 = ganze Tiefe)",
+                    Node::mm("sel_slot_len", sl.length.unwrap_or(0.0), 0.0, 400.0),
+                ));
+                rows.push(row("Anzahl (0 = so viele wie passen)", int("sel_slot_n", sl.count.unwrap_or(0), 0, 60)));
+                rows.push(row(
+                    "Gravur vorne",
+                    Node::TextInput {
+                        id: "sel_slot_label".into(),
+                        value: sl.label.clone().unwrap_or_default(),
+                        hint: None,
+                        multiline: false,
+                        enabled: true,
+                    },
+                ));
             }
             Some(HolderSpec::Troughs(t)) => {
                 rows.push(row("Durchmesser", Node::mm("sel_trough_d", t.diameter, 2.0, 60.0)));
                 rows.push(row("Länge", Node::mm("sel_trough_len", t.length, 20.0, 600.0)));
                 rows.push(row("Griff Ø (0 = ohne)", Node::mm("sel_handle", t.handle.unwrap_or(0.0), 0.0, 60.0)));
+                rows.push(row("Anzahl (0 = so viele wie passen)", int("sel_trough_n", t.count.unwrap_or(0), 0, 20)));
             }
             Some(HolderSpec::Tape(t)) => {
                 rows.push(row("Rollen-Ø", Node::mm("sel_tape_od", t.od, 30.0, 200.0)));
@@ -1215,6 +1489,8 @@ impl GuestPanel for DrawerPanel {
                 self.edit_selected(|p| p.bin.cutouts.clear());
                 Vec::new()
             }
+            Event::Click { id } if id == "sel_row_add" => self.row_count(true),
+            Event::Click { id } if id == "sel_row_del" => self.row_count(false),
             Event::Changed { id, value } => {
                 let num = value.as_f64();
                 let text = value.as_str().map(str::to_owned);
