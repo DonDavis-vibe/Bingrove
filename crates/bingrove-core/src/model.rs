@@ -618,6 +618,209 @@ impl Default for TroughSpec {
     }
 }
 
+/// Cells across a wall part needs for `width` mm.
+fn wall_cells_x(width: f64) -> u32 {
+    ((width + GRID - BIN_SIZE) / GRID - 1e-9).ceil().max(1.0) as u32
+}
+
+/// Cells up the wall a wall part needs for something `height` mm tall from its bottom.
+fn wall_cells_y(height: f64) -> u32 {
+    ((height + crate::spec::HOOK_LIFT + GRID - BIN_SIZE) / GRID - 1e-9).ceil().max(1.0) as u32
+}
+
+/// Units a wall part needs to reach `depth` mm out of the wall in front of its feet.
+fn wall_units(depth: f64) -> u32 {
+    ((depth + crate::spec::FOOT_H + crate::spec::FLOOR) / UNIT - 1e-9).ceil().max(2.0) as u32
+}
+
+/// Standing things in holes on a wall: a block at the bottom of the part with a grid of holes
+/// from above, `count` across and out of the wall, leaning `tilt` degrees away from it at the
+/// top. Screwdrivers, pens, files, extension bars of one size.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WallHolesSpec {
+    /// Diameter of the thing (across flats for hex).
+    pub d: f64,
+    /// How deep it stands in.
+    pub depth: f64,
+    pub shape: HoleShape,
+    /// Holes across and rows out of the wall.
+    pub count: [u32; 2],
+    pub tilt: f64,
+    /// Holes open at the bottom: the thing hangs through by a wider top (screwdrivers).
+    pub through: bool,
+    pub clearance: f64,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+    pub title: Option<String>,
+}
+
+impl Default for WallHolesSpec {
+    fn default() -> Self {
+        WallHolesSpec {
+            d: 10.0,
+            depth: 25.0,
+            shape: HoleShape::Round,
+            count: [4, 1],
+            tilt: 0.0,
+            through: false,
+            clearance: 1.0,
+            cells: [1, 1],
+            units: None,
+            title: None,
+        }
+    }
+}
+
+impl WallHolesSpec {
+    /// The widest extent of one hole.
+    pub fn hole(&self) -> f64 {
+        crate::catalog::across(self.shape, self.d + self.clearance)
+    }
+
+    pub fn pitch(&self) -> f64 {
+        self.hole() + crate::catalog::HOLE_WALL
+    }
+
+    fn tilt(&self) -> f64 {
+        self.tilt.clamp(0.0, 30.0).to_radians()
+    }
+
+    /// Width, depth out of the wall and height of the block with the holes.
+    pub fn block(&self) -> [f64; 3] {
+        let wall = crate::catalog::HOLE_WALL;
+        let n = self.count.map(|c| c.max(1) as f64);
+        [
+            n[0] * self.pitch() + wall,
+            (n[1] - 1.0) * self.pitch() + self.hole() + self.depth * self.tilt().sin() + 2.0 * wall,
+            if self.through { self.depth.max(6.0) } else { crate::spec::FLOOR + self.depth * self.tilt().cos() + 1.0 },
+        ]
+    }
+
+    /// The smallest part for the holes.
+    pub fn fit(mut self) -> Self {
+        let [w, _, h] = self.block();
+        self.cells = [wall_cells_x(w), wall_cells_y(h)];
+        self
+    }
+}
+
+/// Bars standing in short sockets on a wall, each its own size, leaning `angle` degrees towards
+/// the wall at the top so they rest against it: extension bars, punches, chisels. With
+/// `stepped` every place further right stands a unit higher.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WallCradleSpec {
+    /// Per place: the bar's diameter, how deep it stands in, the text in front.
+    pub slots: Vec<RowHole>,
+    pub angle: f64,
+    pub stepped: bool,
+    pub clearance: f64,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+    pub title: Option<String>,
+}
+
+impl Default for WallCradleSpec {
+    fn default() -> Self {
+        WallCradleSpec {
+            slots: vec![RowHole { d: 12.0, depth: Some(20.0), label: String::new() }; 3],
+            angle: 12.0,
+            stepped: true,
+            clearance: 1.0,
+            cells: [1, 1],
+            units: None,
+            title: None,
+        }
+    }
+}
+
+impl WallCradleSpec {
+    fn angle(&self) -> f64 {
+        self.angle.clamp(0.0, 30.0).to_radians()
+    }
+
+    /// Width of a place: the socket and a wall.
+    pub fn place(&self, slot: &RowHole) -> f64 {
+        slot.d + self.clearance + crate::catalog::HOLE_WALL
+    }
+
+    /// Top of place `k` above the part's bottom.
+    pub fn top(&self, k: usize) -> f64 {
+        let base = self
+            .slots
+            .iter()
+            .map(|s| crate::spec::FLOOR + s.depth() * self.angle().cos() + 1.0)
+            .fold(crate::spec::FLOOR + 6.0, f64::max);
+        base + if self.stepped { k as f64 * UNIT } else { 0.0 }
+    }
+
+    /// Width, depth out of the wall and height of the places together.
+    pub fn block(&self) -> [f64; 3] {
+        let wall = crate::catalog::HOLE_WALL;
+        let width = self.slots.iter().map(|s| self.place(s)).sum::<f64>() + wall;
+        let depth = self
+            .slots
+            .iter()
+            .map(|s| s.d + self.clearance + s.depth() * self.angle().sin() + 2.0 * wall + 0.5)
+            .fold(0.0, f64::max);
+        [width, depth, self.top(self.slots.len().saturating_sub(1))]
+    }
+
+    pub fn fit(mut self) -> Self {
+        let [w, _, h] = self.block();
+        self.cells = [wall_cells_x(w), wall_cells_y(h + 3.0)];
+        self
+    }
+}
+
+/// Things standing jaws down in V-bottomed slots on a shelf out of the wall, handles up:
+/// pliers, scissors, wrenches. The slots run out from the wall, open at the front unless
+/// `closed_front`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WallVSlotSpec {
+    pub slots: Vec<VSlot>,
+    pub closed_front: bool,
+    /// How far the slots reach out of the wall.
+    pub length: f64,
+    pub clearance: f64,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+    pub title: Option<String>,
+}
+
+impl Default for WallVSlotSpec {
+    fn default() -> Self {
+        WallVSlotSpec {
+            slots: vec![VSlot { width: 14.0, depth: 25.0, label: String::new() }; 3],
+            closed_front: false,
+            length: 30.0,
+            clearance: 1.0,
+            cells: [1, 1],
+            units: None,
+            title: None,
+        }
+    }
+}
+
+impl WallVSlotSpec {
+    /// Width, depth out of the wall and height of the shelf with the slots.
+    pub fn block(&self) -> [f64; 3] {
+        let wall = crate::catalog::HOLE_WALL;
+        let width = self.slots.iter().map(|s| s.width + self.clearance + wall).sum::<f64>() + wall;
+        let deepest = self.slots.iter().map(|s| s.depth).fold(0.0, f64::max);
+        let front = if self.closed_front { crate::spec::WALL } else { 0.0 };
+        [width, self.length + front, crate::spec::FLOOR + deepest + 1.0]
+    }
+
+    pub fn fit(mut self) -> Self {
+        let [w, _, h] = self.block();
+        self.cells = [wall_cells_x(w), wall_cells_y(h + 3.0)];
+        self
+    }
+}
+
 /// Special holders that replace a plain bin on its cells.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -629,8 +832,14 @@ pub enum HolderSpec {
     Row(RowSpec),
     Slots(SlotSpec),
     Cradles(CradleSpec),
+    // "vslots" is what the tools tell the AI; "v_slots" is how 0.3 wrote it.
+    #[serde(rename = "vslots", alias = "v_slots")]
     VSlots(VSlotSpec),
     Rings(RingSpec),
+    WallHoles(WallHolesSpec),
+    WallCradles(WallCradleSpec),
+    #[serde(rename = "wall_vslots", alias = "wall_v_slots")]
+    WallVSlots(WallVSlotSpec),
 }
 
 /// Air around hex bits (across flats) and a 1/4" bit's size.
@@ -650,7 +859,15 @@ impl HolderSpec {
             HolderSpec::Cradles(c) => c.cells,
             HolderSpec::VSlots(v) => v.cells,
             HolderSpec::Rings(r) => r.cells,
+            HolderSpec::WallHoles(w) => w.cells,
+            HolderSpec::WallCradles(w) => w.cells,
+            HolderSpec::WallVSlots(w) => w.cells,
         }
+    }
+
+    /// Whether the holder hangs on a wall (made lying on its bottom face, hooks in its feet).
+    pub fn is_wall(&self) -> bool {
+        matches!(self, HolderSpec::WallHoles(_) | HolderSpec::WallCradles(_) | HolderSpec::WallVSlots(_))
     }
 
     /// The holder with another footprint (tape decides its own).
@@ -665,6 +882,9 @@ impl HolderSpec {
             HolderSpec::Cradles(c) => c.cells = cells,
             HolderSpec::VSlots(v) => v.cells = cells,
             HolderSpec::Rings(r) => r.cells = cells,
+            HolderSpec::WallHoles(w) => w.cells = cells,
+            HolderSpec::WallCradles(w) => w.cells = cells,
+            HolderSpec::WallVSlots(w) => w.cells = cells,
         }
         self
     }
@@ -681,6 +901,9 @@ impl HolderSpec {
             HolderSpec::Cradles(c) => c.units = units,
             HolderSpec::VSlots(v) => v.units = units,
             HolderSpec::Rings(r) => r.units = units,
+            HolderSpec::WallHoles(w) => w.units = units,
+            HolderSpec::WallCradles(w) => w.units = units,
+            HolderSpec::WallVSlots(w) => w.units = units,
         }
     }
 
@@ -703,6 +926,10 @@ impl HolderSpec {
             HolderSpec::VSlots(v) => v.units.unwrap_or_else(|| from_depth(v.max_depth())),
             // Rings stand on the floor; the shell is as tall as they are.
             HolderSpec::Rings(r) => r.units.unwrap_or_else(|| from_depth(r.height - 2.0)),
+            // Wall holders reach out of the wall as far as their block.
+            HolderSpec::WallHoles(w) => w.units.unwrap_or_else(|| wall_units(w.block()[1])),
+            HolderSpec::WallCradles(w) => w.units.unwrap_or_else(|| wall_units(w.block()[1])),
+            HolderSpec::WallVSlots(w) => w.units.unwrap_or_else(|| wall_units(w.block()[1])),
         }
     }
 
@@ -711,6 +938,7 @@ impl HolderSpec {
         let [w, d] = self.cells().map(bin_outer);
         match self {
             HolderSpec::Tape(t) => [w, d, FLOOR_Z + crate::spec::TAPE_POST_H + (t.height as f64 - 1.0) * TAPE_W],
+            h if h.is_wall() => crate::spec::wall_size(self.cells(), self.units()),
             _ => [w, d, self.units() as f64 * UNIT + crate::spec::LIP_H],
         }
     }
@@ -754,6 +982,28 @@ impl HolderSpec {
                 format!("vschlitze_{what}{}", if v.ramp { "_rampe" } else { "" })
             }
             HolderSpec::Rings(r) => format!("ringe_d{}", crate::names::mm(r.d)),
+            HolderSpec::WallHoles(w) => {
+                let title = w.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
+                let what = title.unwrap_or_else(|| format!("d{}", crate::names::mm(w.d)));
+                let shape = match w.shape {
+                    HoleShape::Round => "",
+                    HoleShape::Hex => "_hex",
+                    HoleShape::Square => "_eckig",
+                };
+                let tilt = if w.tilt > 0.0 { "_schraeg" } else { "" };
+                let through = if w.through { "_durch" } else { "" };
+                format!("loecher_{what}{shape}_{}x{}{tilt}{through}", w.count[0], w.count[1])
+            }
+            HolderSpec::WallCradles(w) => {
+                let title = w.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
+                let what = title.unwrap_or_else(|| format!("{}", w.slots.len()));
+                format!("wiegen_{what}{}", if w.stepped { "_gestuft" } else { "" })
+            }
+            HolderSpec::WallVSlots(w) => {
+                let title = w.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
+                let what = title.unwrap_or_else(|| format!("{}", w.slots.len()));
+                format!("vschlitze_{what}{}", if w.closed_front { "_zu" } else { "" })
+            }
         }
     }
 }

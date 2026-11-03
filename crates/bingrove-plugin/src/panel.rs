@@ -81,7 +81,7 @@ impl Default for PanelState {
 /// The bins of a plan as a mix of footprints (holders left out).
 fn bins_of(p: &Plan) -> Mix {
     Mix::of(p.placements.iter().filter_map(|pl| match &p.parts[pl.part].part {
-        PartSpec::Bin { spec, .. } => Some(spec.cells),
+        PartSpec::Bin { spec, .. } | PartSpec::WallBin { spec, .. } => Some(spec.cells),
         _ => None,
     }))
 }
@@ -115,6 +115,9 @@ fn holder_label(h: &HolderSpec) -> String {
         HolderSpec::Cradles(c) => c.title.clone().unwrap_or_else(|| format!("{} Wiegen", c.slots.len())),
         HolderSpec::VSlots(v) => v.title.clone().unwrap_or_else(|| format!("{} V-Schlitze", v.slots.len())),
         HolderSpec::Rings(r) => r.label.clone().unwrap_or_else(|| format!("Ringe {}", mm(r.d))),
+        HolderSpec::WallHoles(w) => w.title.clone().unwrap_or_else(|| format!("{} Löcher", w.count[0] * w.count[1])),
+        HolderSpec::WallCradles(w) => w.title.clone().unwrap_or_else(|| format!("{} Wiegen", w.slots.len())),
+        HolderSpec::WallVSlots(w) => w.title.clone().unwrap_or_else(|| format!("{} V-Schlitze", w.slots.len())),
     }
 }
 
@@ -132,7 +135,18 @@ fn set_holder(p: &mut Placement, id: &str) {
 }
 
 /// The holder fields of the selection form ("sel_" stripped) that carry numbers.
-const HOLDER_FIELDS: [&str; 33] = [
+const HOLDER_FIELDS: [&str; 44] = [
+    "wh_d",
+    "wh_depth",
+    "wh_nx",
+    "wh_ny",
+    "wh_tilt",
+    "wh_clear",
+    "wc_angle",
+    "wc_clear",
+    "wc_depth",
+    "wv_len",
+    "wv_clear",
     "window_w",
     "window_angle",
     "cradle_angle",
@@ -222,6 +236,21 @@ fn holder_field(p: &mut Placement, field: &str, v: f64) {
             r.count = (c[0] > 0 && c[1] > 0).then_some(c);
         }
         (Some(HolderSpec::Rings(r)), "ring_clear") => r.clearance = v.clamp(0.0, 5.0),
+        (Some(HolderSpec::WallHoles(w)), "wh_d") => w.d = v.clamp(1.0, 80.0),
+        (Some(HolderSpec::WallHoles(w)), "wh_depth") => w.depth = v.clamp(3.0, 120.0),
+        (Some(HolderSpec::WallHoles(w)), "wh_nx") => w.count[0] = whole(v).clamp(1, 40),
+        (Some(HolderSpec::WallHoles(w)), "wh_ny") => w.count[1] = whole(v).clamp(1, 10),
+        (Some(HolderSpec::WallHoles(w)), "wh_tilt") => w.tilt = v.clamp(0.0, 30.0),
+        (Some(HolderSpec::WallHoles(w)), "wh_clear") => w.clearance = v.clamp(0.0, 5.0),
+        (Some(HolderSpec::WallCradles(w)), "wc_angle") => w.angle = v.clamp(0.0, 30.0),
+        (Some(HolderSpec::WallCradles(w)), "wc_clear") => w.clearance = v.clamp(0.0, 5.0),
+        (Some(HolderSpec::WallCradles(w)), "wc_depth") => {
+            for slot in &mut w.slots {
+                slot.depth = Some(v.clamp(3.0, 80.0));
+            }
+        }
+        (Some(HolderSpec::WallVSlots(w)), "wv_len") => w.length = v.clamp(10.0, 150.0),
+        (Some(HolderSpec::WallVSlots(w)), "wv_clear") => w.clearance = v.clamp(0.0, 5.0),
         _ => {}
     }
     refresh_holder(p);
@@ -296,6 +325,9 @@ fn refresh_holder(p: &mut Placement) {
         Some(HolderSpec::Row(r)) => r.cells = row_cells(r),
         Some(HolderSpec::Cradles(c)) => c.cells = cradle_cells(c),
         Some(HolderSpec::VSlots(v)) => v.cells = vslot_cells(v),
+        Some(HolderSpec::WallHoles(w)) => w.cells = w.clone().fit().cells,
+        Some(HolderSpec::WallCradles(w)) => w.cells = w.clone().fit().cells,
+        Some(HolderSpec::WallVSlots(w)) => w.cells = w.clone().fit().cells,
         _ => {}
     }
     if let Some(h) = &p.holder {
@@ -368,6 +400,9 @@ fn holder_id(p: &Placement) -> &'static str {
                 HolderSpec::Cradles(_) => "cradles",
                 HolderSpec::VSlots(_) => "vslots",
                 HolderSpec::Rings(_) => "rings",
+                HolderSpec::WallHoles(_) => "wall_holes",
+                HolderSpec::WallCradles(_) => "wall_cradles",
+                HolderSpec::WallVSlots(_) => "wall_vslots",
                 _ => "custom",
             };
             catalog().into_iter().find(|c| c.holder.clone().with_cells(h.cells()) == *h).map_or(fallback, |c| c.id)
@@ -579,19 +614,52 @@ impl DrawerPanel {
                 format!("{} ({:.0} × {:.0} mm)", s.project.bed.name, s.project.bed.x, s.project.bed.y),
             ));
         }
-        let surface = o.kind == Kind::Surface;
+        let surface = o.kind != Kind::Drawer;
+        let wall = o.kind == Kind::Wall;
         let mut rows = vec![
             row(
                 "Art",
                 select(
                     "kind",
-                    &[("drawer", "Schubladeneinsatz"), ("surface", "Fläche (Werkbank, Tisch)")],
-                    if surface { "surface" } else { "drawer" },
+                    &[
+                        ("drawer", "Schubladeneinsatz"),
+                        ("surface", "Fläche (Werkbank, Tisch)"),
+                        ("wall", "Wand (Teile hängen ein)"),
+                    ],
+                    match o.kind {
+                        Kind::Drawer => "drawer",
+                        Kind::Surface => "surface",
+                        Kind::Wall => "wall",
+                    },
                 ),
             ),
             row("Name", Node::text_input("name", d.name.clone())),
         ];
-        if surface {
+        if wall {
+            let cells = plan.map_or([0, 0], |p| p.grid.cells);
+            let int = |id: &str, value: u32| Node::NumberInput {
+                id: id.into(),
+                value: f64::from(value),
+                min: Some(1.0),
+                max: Some(35.0),
+                step: Some(1.0),
+                unit: Unit::None,
+                decimals: Some(0),
+                enabled: true,
+            };
+            rows.push(row("Zellen quer × hoch", Node::row(vec![int("cells_x", cells[0]), int("cells_y", cells[1])])));
+            rows.push(row(
+                "Wand",
+                Node::Label {
+                    text: format!(
+                        "{:.0} × {:.0} mm; Teile werden 3 mm angehoben eingesetzt und rutschen auf die Haken",
+                        d.width, d.depth
+                    ),
+                    style: TextStyle::Small,
+                },
+            ));
+            rows.push(row("Ausladung max.", Node::mm("height", d.height, 0.0, 1000.0)));
+        } else if surface {
             let cells = plan.map_or([0, 0], |p| p.grid.cells);
             let int = |id: &str, value: u32| Node::NumberInput {
                 id: id.into(),
@@ -666,56 +734,103 @@ impl DrawerPanel {
         }
         let drawer = Node::Form { id: "drawer".into(), rows, submit: None };
         let has_floor = o.floor != PlateFloor::Open;
-        let plate = Node::Form {
-            id: "plate".into(),
-            rows: vec![
-                row(
-                    "Platte",
-                    select(
-                        "floor",
-                        &[("open", "offener Rahmen"), ("solid", "mit Boden"), ("magnets", "Boden mit Magnetlöchern")],
-                        match o.floor {
-                            PlateFloor::Open => "open",
-                            PlateFloor::Solid => "solid",
-                            PlateFloor::Magnets => "magnets",
+        let plate = if wall {
+            Node::Form {
+                id: "plate".into(),
+                rows: vec![
+                    row(
+                        "Platte",
+                        select(
+                            "floor",
+                            &[("solid", "mit Boden"), ("magnets", "Boden mit Magnetlöchern")],
+                            if o.floor == PlateFloor::Magnets { "magnets" } else { "solid" },
+                        ),
+                    ),
+                    row(
+                        "Halt",
+                        Node::Checkbox {
+                            id: "hooks".into(),
+                            label: "Haken in den Zellen (Teile einhängen; ohne: nur Magnete, jeder Bin passt)".into(),
+                            checked: o.hooks,
+                            enabled: true,
                         },
                     ),
-                ),
-                row(
-                    "Boden",
-                    Node::row(vec![
+                    row(
+                        "Befestigung",
+                        Node::row(vec![
+                            Node::Checkbox {
+                                id: "screws".into(),
+                                label: "Schraublöcher (Mitte der Eckzellen)".into(),
+                                checked: o.mount.screws,
+                                enabled: true,
+                            },
+                            Node::Checkbox {
+                                id: "connectors".into(),
+                                label: "Schwalbenschwanz zwischen den Teilen".into(),
+                                checked: o.mount.connectors,
+                                enabled: true,
+                            },
+                        ]),
+                    ),
+                ],
+                submit: None,
+            }
+        } else {
+            Node::Form {
+                id: "plate".into(),
+                rows: vec![
+                    row(
+                        "Platte",
                         select(
-                            "style",
-                            &[("skeleton", "skelettiert (Pads)"), ("full", "voll")],
-                            if o.style == PlateStyle::Full { "full" } else { "skeleton" },
+                            "floor",
+                            &[
+                                ("open", "offener Rahmen"),
+                                ("solid", "mit Boden"),
+                                ("magnets", "Boden mit Magnetlöchern"),
+                            ],
+                            match o.floor {
+                                PlateFloor::Open => "open",
+                                PlateFloor::Solid => "solid",
+                                PlateFloor::Magnets => "magnets",
+                            },
                         ),
-                        Node::Checkbox {
-                            id: "magnets_below".into(),
-                            label: "Magnete von unten".into(),
-                            checked: has_floor && o.magnets_below,
-                            enabled: has_floor,
-                        },
-                    ]),
-                ),
-                row(
-                    "Befestigung",
-                    Node::row(vec![
-                        Node::Checkbox {
-                            id: "screws".into(),
-                            label: "Schraublöcher (gesenkt, in den Ecken)".into(),
-                            checked: has_floor && o.mount.screws,
-                            enabled: has_floor,
-                        },
-                        Node::Checkbox {
-                            id: "connectors".into(),
-                            label: "Schwalbenschwanz zwischen den Teilen".into(),
-                            checked: has_floor && o.mount.connectors,
-                            enabled: has_floor,
-                        },
-                    ]),
-                ),
-            ],
-            submit: None,
+                    ),
+                    row(
+                        "Boden",
+                        Node::row(vec![
+                            select(
+                                "style",
+                                &[("skeleton", "skelettiert (Pads)"), ("full", "voll")],
+                                if o.style == PlateStyle::Full { "full" } else { "skeleton" },
+                            ),
+                            Node::Checkbox {
+                                id: "magnets_below".into(),
+                                label: "Magnete von unten".into(),
+                                checked: has_floor && o.magnets_below,
+                                enabled: has_floor,
+                            },
+                        ]),
+                    ),
+                    row(
+                        "Befestigung",
+                        Node::row(vec![
+                            Node::Checkbox {
+                                id: "screws".into(),
+                                label: "Schraublöcher (gesenkt, in den Ecken)".into(),
+                                checked: has_floor && o.mount.screws,
+                                enabled: has_floor,
+                            },
+                            Node::Checkbox {
+                                id: "connectors".into(),
+                                label: "Schwalbenschwanz zwischen den Teilen".into(),
+                                checked: has_floor && o.mount.connectors,
+                                enabled: has_floor,
+                            },
+                        ]),
+                    ),
+                ],
+                submit: None,
+            }
         };
         let output = Node::Form {
             id: "output".into(),
@@ -849,31 +964,47 @@ impl DrawerPanel {
             zone(Side::Front, 0.0, ny as f32, nx as f32, m(Side::Front)),
             zone(Side::Back, 0.0, -m(Side::Back), nx as f32, m(Side::Back)),
         ];
-        let actions = vec![
-            Action { id: "taller".into(), label: "Höher (+1 Einheit)".into() },
-            Action { id: "lower".into(), label: "Niedriger (−1 Einheit)".into() },
+        let wall_actions = vec![
+            Action { id: "taller".into(), label: "Weiter heraus (+1 Einheit)".into() },
+            Action { id: "lower".into(), label: "Flacher (−1 Einheit)".into() },
             Action { id: "div_x".into(), label: "Fach teilen (quer)".into() },
-            Action { id: "div_y".into(), label: "Fach teilen (längs)".into() },
+            Action { id: "div_y".into(), label: "Fach teilen (in die Tiefe)".into() },
             Action { id: "div_none".into(), label: "Fächer entfernen".into() },
-            Action { id: "label_tab".into(), label: "Label-Lasche an/aus".into() },
-            Action { id: "scoop".into(), label: "Griffmulde an/aus".into() },
-            Action { id: "lid".into(), label: "Deckel an/aus".into() },
             Action { id: "open_front".into(), label: "Vorne offen an/aus".into() },
-            Action { id: "fingers".into(), label: "Fingerausschnitte an/aus".into() },
-            Action { id: "window".into(), label: "Fenster vorne an/aus".into() },
-            Action { id: "edges".into(), label: "Rand nutzen an/aus".into() },
-            Action { id: "holder_none".into(), label: "Halter: keiner (normaler Bin)".into() },
-            Action { id: "holder_aa".into(), label: "Halter: AA-Zellen".into() },
-            Action { id: "holder_aaa".into(), label: "Halter: AAA-Zellen".into() },
-            Action { id: "holder_18650".into(), label: "Halter: 18650-Akkus".into() },
-            Action { id: "holder_bits".into(), label: "Halter: 1/4\"-Bits".into() },
-            Action { id: "holder_pens".into(), label: "Halter: Stifte stehend".into() },
-            Action { id: "holder_pens_lying".into(), label: "Halter: Stifte liegend".into() },
-            Action { id: "holder_screwdrivers".into(), label: "Halter: Schraubendreher".into() },
-            Action { id: "holder_tape".into(), label: "Halter: Tape-Rollen".into() },
-            Action { id: "silhouette".into(), label: "Ausschnitt: Silhouette des Modells".into() },
-            Action { id: "cutouts_none".into(), label: "Ausschnitte entfernen".into() },
+            Action { id: "holder_none".into(), label: "Ablage (Wandbin)".into() },
+            Action { id: "holder_wall_holes".into(), label: "Halter: Löcher stehend".into() },
+            Action { id: "holder_wall_cradles".into(), label: "Halter: Wiegen (lehnend)".into() },
+            Action { id: "holder_wall_vslots".into(), label: "Halter: V-Schlitze (Zangen)".into() },
         ];
+        let actions = if p.kind == Kind::Wall {
+            wall_actions
+        } else {
+            vec![
+                Action { id: "taller".into(), label: "Höher (+1 Einheit)".into() },
+                Action { id: "lower".into(), label: "Niedriger (−1 Einheit)".into() },
+                Action { id: "div_x".into(), label: "Fach teilen (quer)".into() },
+                Action { id: "div_y".into(), label: "Fach teilen (längs)".into() },
+                Action { id: "div_none".into(), label: "Fächer entfernen".into() },
+                Action { id: "label_tab".into(), label: "Label-Lasche an/aus".into() },
+                Action { id: "scoop".into(), label: "Griffmulde an/aus".into() },
+                Action { id: "lid".into(), label: "Deckel an/aus".into() },
+                Action { id: "open_front".into(), label: "Vorne offen an/aus".into() },
+                Action { id: "fingers".into(), label: "Fingerausschnitte an/aus".into() },
+                Action { id: "window".into(), label: "Fenster vorne an/aus".into() },
+                Action { id: "edges".into(), label: "Rand nutzen an/aus".into() },
+                Action { id: "holder_none".into(), label: "Halter: keiner (normaler Bin)".into() },
+                Action { id: "holder_aa".into(), label: "Halter: AA-Zellen".into() },
+                Action { id: "holder_aaa".into(), label: "Halter: AAA-Zellen".into() },
+                Action { id: "holder_18650".into(), label: "Halter: 18650-Akkus".into() },
+                Action { id: "holder_bits".into(), label: "Halter: 1/4\"-Bits".into() },
+                Action { id: "holder_pens".into(), label: "Halter: Stifte stehend".into() },
+                Action { id: "holder_pens_lying".into(), label: "Halter: Stifte liegend".into() },
+                Action { id: "holder_screwdrivers".into(), label: "Halter: Schraubendreher".into() },
+                Action { id: "holder_tape".into(), label: "Halter: Tape-Rollen".into() },
+                Action { id: "silhouette".into(), label: "Ausschnitt: Silhouette des Modells".into() },
+                Action { id: "cutouts_none".into(), label: "Ausschnitte entfernen".into() },
+            ]
+        };
         let items = p
             .placements
             .iter()
@@ -1122,6 +1253,72 @@ impl DrawerPanel {
                     refresh_holder(p);
                 });
             }
+            ("wall_title", _, _, Some(t)) => self.edit_selected(|p| {
+                let title = (!t.is_empty()).then(|| t.clone());
+                match &mut p.holder {
+                    Some(HolderSpec::WallHoles(x)) => x.title = title,
+                    Some(HolderSpec::WallCradles(x)) => x.title = title,
+                    Some(HolderSpec::WallVSlots(x)) => x.title = title,
+                    _ => {}
+                }
+                refresh_holder(p);
+            }),
+            ("wh_shape", _, _, Some(t)) => self.edit_selected(|p| {
+                if let Some(HolderSpec::WallHoles(x)) = &mut p.holder {
+                    x.shape = shape_of(&t);
+                }
+                refresh_holder(p);
+            }),
+            ("wh_through", _, Some(on), _) => self.edit_selected(|p| {
+                if let Some(HolderSpec::WallHoles(x)) = &mut p.holder {
+                    x.through = on;
+                }
+                refresh_holder(p);
+            }),
+            ("wc_stepped", _, Some(on), _) => self.edit_selected(|p| {
+                if let Some(HolderSpec::WallCradles(x)) = &mut p.holder {
+                    x.stepped = on;
+                }
+                refresh_holder(p);
+            }),
+            ("wv_closed", _, Some(on), _) => self.edit_selected(|p| {
+                if let Some(HolderSpec::WallVSlots(x)) = &mut p.holder {
+                    x.closed_front = on;
+                }
+                refresh_holder(p);
+            }),
+            ("wc_slots", _, _, Some(t)) => {
+                let slots = parse_row(&t);
+                if slots.is_empty() {
+                    return vec![Effect::Toast {
+                        text: "Keinen Platz erkannt: Ø oder Ø=Text, durch Komma".into(),
+                        level: Level::Warn,
+                    }];
+                }
+                self.edit_selected(|p| {
+                    if let Some(HolderSpec::WallCradles(x)) = &mut p.holder {
+                        // The new places keep the depth the old ones had.
+                        let depth = x.slots.first().and_then(|s| s.depth);
+                        x.slots = slots.iter().map(|s| RowHole { depth, ..s.clone() }).collect();
+                    }
+                    refresh_holder(p);
+                });
+            }
+            ("wv_slots", _, _, Some(t)) => {
+                let slots = parse_vslots(&t);
+                if slots.is_empty() {
+                    return vec![Effect::Toast {
+                        text: "Keinen Schlitz erkannt: Dicke×Tiefe=Text, durch Komma".into(),
+                        level: Level::Warn,
+                    }];
+                }
+                self.edit_selected(|p| {
+                    if let Some(HolderSpec::WallVSlots(x)) = &mut p.holder {
+                        x.slots = slots.clone();
+                    }
+                    refresh_holder(p);
+                });
+            }
             ("row_stepped", _, Some(on), _) => self.edit_selected(|p| {
                 if let Some(HolderSpec::Row(r)) = &mut p.holder {
                     r.stepped = on;
@@ -1184,8 +1381,14 @@ impl DrawerPanel {
             .collect();
         let first = *chosen.first()?;
         let [w, d] = first.cells();
+        let wall = p.kind == Kind::Wall;
         let title = match chosen.len() {
-            1 => format!("Fach {w}×{d} in Spalte {}, Reihe {} von vorne", first.x + 1, first.y + 1),
+            1 => format!(
+                "Fach {w}×{d} in Spalte {}, Reihe {} von {}",
+                first.x + 1,
+                first.y + 1,
+                if wall { "unten" } else { "vorne" }
+            ),
             n => format!("{n} Fächer ausgewählt (Werte des ersten, Änderungen für alle)"),
         };
         let int = |id: &str, value: u32, min: u32, max: u32| Node::NumberInput {
@@ -1208,13 +1411,33 @@ impl DrawerPanel {
         let row = |label: &str, node: Node| FormRow { label: label.into(), node };
         let plain = first.holder.is_none();
         let mut rows = vec![row(
-            "Höhe",
+            if wall { "Ausladung" } else { "Höhe" },
             Node::row(vec![
                 int("sel_units", first.bin.units, 1, p.heights.max.max(1)),
                 small(format!("Einheiten = {:.0} mm", f64::from(first.bin.units) * UNIT)),
             ]),
         )];
-        if plain {
+        if plain && wall {
+            rows.push(row(
+                "Fächer quer × in die Tiefe",
+                Node::row(vec![
+                    int("sel_div_x", first.bin.dividers[0], 1, 12),
+                    int("sel_div_y", first.bin.dividers[1], 1, 12),
+                ]),
+            ));
+            rows.push(row("Ausstattung", check("sel_open_front", "vorne offen", first.bin.open_front)));
+            rows.push(row(
+                "Gravur",
+                Node::TextInput {
+                    id: "sel_engrave".into(),
+                    value: first.bin.label_text.clone().unwrap_or_default(),
+                    hint: Some("vorne auf der Ablage".into()),
+                    multiline: false,
+                    enabled: true,
+                },
+            ));
+        }
+        if plain && !wall {
             rows.push(row(
                 "Fächer quer × längs",
                 Node::row(vec![
@@ -1291,8 +1514,14 @@ impl DrawerPanel {
             ));
         }
         let holder = holder_id(first);
-        let mut options = vec![Choice { value: "none".into(), label: "keiner (normaler Bin)".into() }];
-        options.extend(catalog().iter().map(|c| Choice { value: c.id.into(), label: c.label.into() }));
+        let none = if wall { "keiner (Ablage)" } else { "keiner (normaler Bin)" };
+        let mut options = vec![Choice { value: "none".into(), label: none.into() }];
+        options.extend(
+            catalog()
+                .iter()
+                .filter(|c| c.holder.is_wall() == wall)
+                .map(|c| Choice { value: c.id.into(), label: c.label.into() }),
+        );
         if holder == "custom" {
             options.push(Choice { value: "custom".into(), label: "eigener Halter".into() });
         }
@@ -1555,9 +1784,101 @@ impl DrawerPanel {
                 ));
                 rows.push(row("Rollen übereinander", int("sel_tape_h", t.height, 1, 10)));
             }
+            Some(h @ (HolderSpec::WallHoles(_) | HolderSpec::WallCradles(_) | HolderSpec::WallVSlots(_))) => {
+                let same = |other: &HolderSpec| std::mem::discriminant(other) == std::mem::discriminant(h);
+                let mut options = vec![Choice { value: String::new(), label: "Satz laden …".into() }];
+                options.extend(
+                    sets()
+                        .iter()
+                        .filter(|s| same(&s.holder))
+                        .map(|s| Choice { value: s.id.into(), label: s.label.into() }),
+                );
+                rows.push(row(
+                    "Satz",
+                    Node::Select { id: "sel_row_set".into(), options, selected: String::new(), enabled: true },
+                ));
+                let title = match h {
+                    HolderSpec::WallHoles(x) => x.title.clone(),
+                    HolderSpec::WallCradles(x) => x.title.clone(),
+                    HolderSpec::WallVSlots(x) => x.title.clone(),
+                    _ => None,
+                };
+                rows.push(row(
+                    "Titel (graviert)",
+                    Node::TextInput {
+                        id: "sel_wall_title".into(),
+                        value: title.unwrap_or_default(),
+                        hint: Some("auf der Rückwand über den Taschen".into()),
+                        multiline: false,
+                        enabled: true,
+                    },
+                ));
+                match h {
+                    HolderSpec::WallHoles(x) => {
+                        rows.push(row("Loch Ø", Node::mm("sel_wh_d", x.d, 1.0, 80.0)));
+                        rows.push(row("Form", shape_select("sel_wh_shape", x.shape)));
+                        rows.push(row("Tiefe", Node::mm("sel_wh_depth", x.depth, 3.0, 120.0)));
+                        rows.push(row(
+                            "Anzahl quer × Reihen",
+                            Node::row(vec![int("sel_wh_nx", x.count[0], 1, 40), int("sel_wh_ny", x.count[1], 1, 10)]),
+                        ));
+                        rows.push(row("Neigung oben von der Wand weg (°)", Node::mm("sel_wh_tilt", x.tilt, 0.0, 30.0)));
+                        rows.push(row("Spiel je Loch", Node::mm("sel_wh_clear", x.clearance, 0.0, 5.0)));
+                        rows.push(row(
+                            "Durchgehend",
+                            check("sel_wh_through", "unten offen (Schraubendreher hängen durch)", x.through),
+                        ));
+                    }
+                    HolderSpec::WallCradles(x) => {
+                        rows.push(row(
+                            "Plätze",
+                            Node::TextInput {
+                                id: "sel_wc_slots".into(),
+                                value: row_text(&x.slots),
+                                hint: Some("Ø oder Ø=Text je Platz, durch Komma".into()),
+                                multiline: false,
+                                enabled: true,
+                            },
+                        ));
+                        let depth = x.slots.first().map_or(20.0, RowHole::depth);
+                        rows.push(row("Tiefe der Fassungen", Node::mm("sel_wc_depth", depth, 3.0, 80.0)));
+                        rows.push(row("Neigung oben zur Wand (°)", Node::mm("sel_wc_angle", x.angle, 0.0, 30.0)));
+                        rows.push(row("Spiel", Node::mm("sel_wc_clear", x.clearance, 0.0, 5.0)));
+                        rows.push(row(
+                            "Stufen",
+                            Node::row(vec![
+                                check("sel_wc_stepped", "jeder Platz weiter rechts eine Einheit höher", x.stepped),
+                                small(format!("{} Plätze, {} × {} Zellen", x.slots.len(), x.cells[0], x.cells[1])),
+                            ]),
+                        ));
+                    }
+                    HolderSpec::WallVSlots(x) => {
+                        rows.push(row(
+                            "Schlitze",
+                            Node::TextInput {
+                                id: "sel_wv_slots".into(),
+                                value: vslot_text(&x.slots),
+                                hint: Some("Dicke×Tiefe=Text je Schlitz, durch Komma".into()),
+                                multiline: false,
+                                enabled: true,
+                            },
+                        ));
+                        rows.push(row("Länge aus der Wand", Node::mm("sel_wv_len", x.length, 10.0, 150.0)));
+                        rows.push(row("Spiel", Node::mm("sel_wv_clear", x.clearance, 0.0, 5.0)));
+                        rows.push(row(
+                            "Form",
+                            Node::row(vec![
+                                check("sel_wv_closed", "vorne geschlossen", x.closed_front),
+                                small(format!("{} Schlitze, {} × {} Zellen", x.slots.len(), x.cells[0], x.cells[1])),
+                            ]),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
             Some(HolderSpec::Bits(_)) | None => {}
         }
-        if plain {
+        if plain && !wall {
             rows.push(row(
                 "Modell (ID)",
                 Node::TextInput {
@@ -1845,7 +2166,18 @@ impl GuestPanel for DrawerPanel {
                     Zone::Edge => format!("{:.1} mm Randzone", g.margin(side)),
                     Zone::Solid => format!("{:.1} mm fest", g.margin(side)),
                 };
-                let text = if p.kind == Kind::Surface {
+                let text = if p.kind == Kind::Wall {
+                    format!(
+                        "Wand {} × {} Zellen ({:.0} × {:.0} mm) · {} Plattenteile · {} · {:.0} % belegt",
+                        g.cells[0],
+                        g.cells[1],
+                        g.plate[0],
+                        g.plate[1],
+                        p.pieces.len(),
+                        if p.plate.hooks { "Haken" } else { "nur Magnete" },
+                        p.usable_area()
+                    )
+                } else if p.kind == Kind::Surface {
                     format!(
                         "Fläche {} × {} Zellen ({:.0} × {:.0} mm) · {} Plattenteile · {:.0} % belegt",
                         g.cells[0],
@@ -2033,7 +2365,11 @@ impl GuestPanel for DrawerPanel {
                         ("edge_threshold", Some(v)) => o.edge_threshold = v,
                         ("bins", Some(v)) => s.bins_wanted = v.max(0.0) as u32,
                         ("kind", _) => {
-                            o.kind = if text.as_deref() == Some("surface") { Kind::Surface } else { Kind::Drawer };
+                            o.kind = match text.as_deref() {
+                                Some("surface") => Kind::Surface,
+                                Some("wall") => Kind::Wall,
+                                _ => Kind::Drawer,
+                            };
                             if o.kind == Kind::Drawer {
                                 o.cells = None;
                             }
@@ -2079,6 +2415,7 @@ impl GuestPanel for DrawerPanel {
                                 if text.as_deref() == Some("full") { PlateStyle::Full } else { PlateStyle::Skeleton }
                         }
                         ("magnets_below", _) => o.magnets_below = value.as_bool().unwrap_or(false),
+                        ("hooks", _) => o.hooks = value.as_bool().unwrap_or(true),
                         ("screws", _) => o.mount.screws = value.as_bool().unwrap_or(false),
                         ("connectors", _) => o.mount.connectors = value.as_bool().unwrap_or(false),
                         ("printer", _) => s.project.bed = crate::bed_of(text.as_deref()),

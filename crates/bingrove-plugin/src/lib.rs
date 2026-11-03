@@ -72,6 +72,8 @@ pub(crate) struct DrawerArgs {
     pub style: Option<PlateStyle>,
     /// Magnet pockets in the underside of the plate (needs a floor).
     pub magnets_below: bool,
+    /// A wall plate's hooks (default on).
+    pub hooks: Option<bool>,
     pub printer: Option<String>,
     pub lists: ListMode,
 }
@@ -118,6 +120,7 @@ impl DrawerArgs {
             mount: self.mount.unwrap_or_default(),
             style: self.style.unwrap_or_default(),
             magnets_below: self.magnets_below,
+            hooks: self.hooks.unwrap_or(true),
             ..PlateOptions::default()
         };
         project.bed = bed_of(self.printer.as_deref());
@@ -263,7 +266,8 @@ fn drawer_schema(with_lists: bool) -> Value {
         "depth": {"type": "number", "description": "inner depth in mm (y, front to back)"},
         "height": {"type": "number", "description": "inner height in mm; 0 if unknown (bins then get 6 units)"},
         "preset": {"type": "string", "description": "a known drawer instead of sizes: see options"},
-        "kind": {"type": "string", "enum": ["drawer", "surface"], "description": "drawer (default): an insert that fills the drawer's inner size; surface: a plate for a bench or desk that is the grid itself (cells x 42 mm, no margins), where cells stay free unless something is put there"},
+        "kind": {"type": "string", "enum": ["drawer", "surface", "wall"], "description": "drawer (default): an insert that fills the drawer's inner size; surface: a plate for a bench or desk that is the grid itself (cells x 42 mm, no margins), where cells stay free unless something is put there; wall: a plate on a wall, sized like a surface with width across and depth = the wall's height, height = how far parts may reach out of the wall; parts hang on a hook in every cell (wall bins are open boxes; holders wall_holes, wall_cradles, wall_vslots or the wall_* sets)"},
+        "hooks": {"type": "boolean", "description": "wall only: a hook in every cell that wall parts hang on (default true); false: parts hold by magnets alone and any bin fits"},
         "cells": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2, "description": "grid cells [x, y]; for a surface its size, for a drawer fewer than fit"},
         "cover": {"type": "string", "enum": ["exact", "partial"], "description": "exact (default): bins cover every cell, gaps are filled; partial: cells may stay free (the plate shows). A surface is always partial"},
         "bins": {"type": "integer", "description": "how many compartments (bins) the drawer should have, when nothing else is asked for: the evenest mix of bin sizes that tiles the grid is laid out, tall at the back"},
@@ -273,7 +277,7 @@ fn drawer_schema(with_lists: bool) -> Value {
                 "name": {"type": "string"},
                 "quantity": {"type": "integer", "default": 1},
                 "kind": {"type": "string", "enum": ["object", "bin", "tape", "holder"], "description": "object: size [x, y, z] mm of a thing to hold; bin: cells [w, d] and optional units (7 mm each); tape: od (roll diameter), stacks [nx, ny], height (rolls per stack); holder: a holder from options.holders (holes for batteries/pens, bits, troughs for lying things) with count"},
-                "holder": {"type": "object", "description": "for kind holder: {kind: holes, item: {item: aa|aaa|c|d|cell18650|cell21700|custom, d, h}, shape: round|hex|square, depth, pitch, count: [nx, ny]} or {kind: bits} or {kind: troughs, diameter, length, handle, count} or {kind: tape, od, stacks, height} or {kind: slots, width, depth, pitch, count} or {kind: row, rows: [[{d, label}, ...], ...], stepped, shape, title, pegs: quarter|three_eighths|half (square pegs for sockets instead of holes)} (sizes engraved) or {kind: cradles, slots: [{width, length, label}, ...], angle, stepped, title} (sloped beds for lying tools) or {kind: vslots, slots: [{width, depth, label}, ...], closed_end, ramp, title} (V-bottomed slots for pliers and wrenches) or {kind: rings, d, height, count: [nx, ny], label} (rings for bottles, cans, spools); a row may have tilt (degrees, holes leaning back); see options.holders for presets"},
+                "holder": {"type": "object", "description": "for kind holder: {kind: holes, item: {item: aa|aaa|c|d|cell18650|cell21700|custom, d, h}, shape: round|hex|square, depth, pitch, count: [nx, ny]} or {kind: bits} or {kind: troughs, diameter, length, handle, count} or {kind: tape, od, stacks, height} or {kind: slots, width, depth, pitch, count} or {kind: row, rows: [[{d, label}, ...], ...], stepped, shape, title, pegs: quarter|three_eighths|half (square pegs for sockets instead of holes)} (sizes engraved) or {kind: cradles, slots: [{width, length, label}, ...], angle, stepped, title} (sloped beds for lying tools) or {kind: vslots, slots: [{width, depth, label}, ...], closed_end, ramp, title} (V-bottomed slots for pliers and wrenches) or {kind: rings, d, height, count: [nx, ny], label} (rings for bottles, cans, spools); a row may have tilt (degrees, holes leaning back); for a wall: {kind: wall_holes, d, depth, shape, count: [across, rows], tilt (top away from the wall), through (open below, screwdrivers hang through), title} or {kind: wall_cradles, slots: [{d, depth, label}, ...], angle (top towards the wall), stepped, title} (bars leaning in sockets) or {kind: wall_vslots, slots: [{width, depth, label}, ...], length, closed_front, title} (pliers jaws down); see options.holders for presets"},
                 "set": {"type": "string", "description": "for kind holder instead of holder: a set of sizes from options.sets, e.g. sockets_1_4_mm, drills, hex_keys"},
                 "count": {"type": "integer", "description": "for kind holder: how many things it must hold; the footprint follows"},
                 "size": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
@@ -373,7 +377,8 @@ impl Guest for Bingrove {
                         "defaults": PlateOptions::default(),
                         "grid_mm": bingrove_core::spec::GRID,
                         "unit_mm": bingrove_core::spec::UNIT,
-                        "item_kinds": ["object: size [x, y, z] mm", "bin: cells [w, d], units", "tape: od, stacks [nx, ny], height", "holder: holder {kind: holes|bits|troughs|tape|slots|row, ...} or set (from sets) and count"],
+                        "item_kinds": ["object: size [x, y, z] mm", "bin: cells [w, d], units", "tape: od, stacks [nx, ny], height", "holder: holder {kind: holes|bits|troughs|tape|slots|row|cradles|vslots|rings|wall_holes|wall_cradles|wall_vslots, ...} or set (from sets) and count"],
+                        "kinds": {"drawer": "an insert filling a drawer's inner size", "surface": "a bench or desk plate that is the grid itself", "wall": "a plate on a wall; parts hang on hooks, wall holders and wall_* sets belong there, bins become open wall bins"},
                         "holders": bingrove_core::catalog::catalog(),
                         "sets": bingrove_core::catalog::sets(),
                         "cutouts": ["box: at [x, y], size [w, d], depth", "cylinder: at [x, y], d, depth", "polygon: points [[x, y], ...], clearance, depth (mm from the bin's front-left corner)"],

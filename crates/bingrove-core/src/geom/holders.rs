@@ -31,7 +31,7 @@ fn shell(cells: [u32; 2], units: u32, p: &Profile) -> Solid {
 
 /// One hole to cut: `size` across (flats for hex, the side for square) with its mouth at
 /// z = `depth`, a 45° chamfer of `chamfer` there, and 1 mm more above for a clean cut.
-fn hole_solid(shape: HoleShape, size: f64, depth: f64, chamfer: f64, seg: u32) -> Solid {
+pub(crate) fn hole_solid(shape: HoleShape, size: f64, depth: f64, chamfer: f64, seg: u32) -> Solid {
     let body = match shape {
         HoleShape::Round => cylinder(depth + 1.0, size / 2.0, size / 2.0, seg),
         HoleShape::Hex => hex_prism(size, depth + 1.0),
@@ -313,6 +313,8 @@ pub fn holder(h: &HolderSpec, p: &Profile) -> Part {
         HolderSpec::Cradles(c) => cradles(c, units, p),
         HolderSpec::VSlots(v) => vslots(v, units, p),
         HolderSpec::Rings(r) => rings(r, units, p),
+        h if h.is_wall() => return super::wall::holder(h, true, crate::model::MagnetMode::None, p),
+        _ => unreachable!("every holder kind is handled"),
     };
     if let Some(text) = front_text(h) {
         let w = bin_outer(h.cells()[0]);

@@ -23,6 +23,11 @@ pub enum Warning {
     ItemUnplaced { item: String, cells: [u32; 2] },
     /// The drawer height is unknown, bins get a default height.
     HeightUnknown { units: u32 },
+    /// A holder made for a wall stands in a drawer or on a surface.
+    WallHolderOffWall { holder: String },
+    /// A holder for drawers hangs on a wall: its pockets open to the front and the plate's
+    /// hooks keep its feet out.
+    HolderNotForWall { holder: String },
 }
 
 impl Warning {
@@ -48,6 +53,12 @@ impl Warning {
                 format!("Kein freier Platz von {}×{} Feldern für {item}", cells[0], cells[1])
             }
             Warning::HeightUnknown { units } => format!("Schubladenhöhe unbekannt, Bins bekommen {units} Einheiten"),
+            Warning::WallHolderOffWall { holder } => {
+                format!("{holder} ist ein Wandhalter; er liegt auf seiner Unterseite und gehört an eine Wand")
+            }
+            Warning::HolderNotForWall { holder } => format!(
+                "{holder} ist für Schubladen gemacht: an der Wand öffnen sich die Taschen nach vorn, und die Haken der Platte lassen seine Füße nicht hinein"
+            ),
         }
     }
 
@@ -79,6 +90,13 @@ impl std::fmt::Display for Warning {
                 write!(f, "no free {}x{} spot for {item}", cells[0], cells[1])
             }
             Warning::HeightUnknown { units } => write!(f, "drawer height unknown, bins get {units} units"),
+            Warning::WallHolderOffWall { holder } => {
+                write!(f, "{holder} is a wall holder; it lies on its bottom face and belongs on a wall")
+            }
+            Warning::HolderNotForWall { holder } => write!(
+                f,
+                "{holder} is made for drawers: on a wall its pockets open to the front and the plate's hooks keep its feet out"
+            ),
         }
     }
 }

@@ -79,7 +79,7 @@ fn wants(items: &[ItemRequest]) -> Vec<Want> {
                         continue;
                     };
                     let holder = match count {
-                        Some(n) => holder.clone().with_cells(crate::catalog::cells_for(&holder, *n)),
+                        Some(n) => crate::catalog::for_count(holder, *n),
                         None => holder,
                     };
                     (holder.cells(), Some(holder.units()), [1, 1], Some(holder))

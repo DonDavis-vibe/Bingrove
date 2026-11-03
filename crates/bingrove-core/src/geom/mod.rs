@@ -63,6 +63,12 @@ pub fn part(plan: &Plan, index: usize, p: &Profile) -> Part {
             part.name = plan.parts[index].name.clone();
             part
         }
+        PartSpec::WallHolder { holder, hooks } => {
+            let magnets = if plan.magnets { crate::model::MagnetMode::Corners } else { crate::model::MagnetMode::None };
+            let mut part = wall::holder(holder, *hooks, magnets, p);
+            part.name = plan.parts[index].name.clone();
+            part
+        }
     }
 }
 

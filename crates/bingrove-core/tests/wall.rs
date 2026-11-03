@@ -3,10 +3,14 @@
 
 use bingrove_core::geom::kernel::{Solid, Vec3};
 use bingrove_core::geom::{all_parts, assemble, wall};
-use bingrove_core::model::{BinSpec, DrawerProject, DrawerSpec, Kind, MagnetMode, Placement, PlateFloor, PlateOptions};
+use bingrove_core::model::{
+    BinSpec, DrawerProject, DrawerSpec, HolderSpec, Kind, MagnetMode, Placement, PlateFloor, PlateOptions,
+    WallHolesSpec, WallVSlotSpec,
+};
 use bingrove_core::plan::{PartSpec, Plan, plan};
 use bingrove_core::profile::Profile;
 use bingrove_core::spec::{BIN_GAP, HOOK_LIFT, UNIT, wall_size};
+use bingrove_core::warn::Warning;
 
 fn wall_project(hooks: bool, placements: Vec<Placement>) -> DrawerProject {
     DrawerProject {
@@ -165,4 +169,194 @@ fn old_projects_are_drawers_with_hooks_on() {
     let plan = plan(&project).unwrap();
     assert!(!plan.plate.hooks && !plan.plate.wall);
     assert!(plan.parts.iter().all(|e| !e.part.is_wall()));
+}
+
+fn wall_sets() -> Vec<bingrove_core::catalog::HolderSet> {
+    bingrove_core::catalog::sets().into_iter().filter(|s| s.holder.is_wall()).collect()
+}
+
+#[test]
+fn wall_holders_are_watertight_and_sized_as_planned() {
+    let p = Profile { seg: 24, ..Profile::default() };
+    let mut holders: Vec<(String, HolderSpec)> =
+        wall_sets().into_iter().map(|s| (s.id.to_string(), s.holder)).collect();
+    holders.extend(
+        bingrove_core::catalog::catalog()
+            .into_iter()
+            .filter(|e| e.holder.is_wall())
+            .map(|e| (e.id.to_string(), e.holder)),
+    );
+    assert!(holders.len() >= 12, "{}", holders.len());
+    for (id, h) in &holders {
+        let part = wall::holder(h, true, MagnetMode::Corners, &p);
+        assert!(part.name.starts_with("wandhalter_"), "{id}: {}", part.name);
+        let mesh = part.mesh().unwrap();
+        assert!(mesh.is_closed(), "{id}");
+        let (lo, hi) = mesh.bbox();
+        let size = h.size();
+        for k in 0..3 {
+            assert!(lo[k].abs() < 1e-3, "{id} min {lo:?}");
+            assert!((hi[k] as f64 - size[k]).abs() < 1e-3, "{id} max {hi:?} size {size:?}");
+        }
+        // The block in front of the plate fits the part.
+        let block = match h {
+            HolderSpec::WallHoles(s) => s.block(),
+            HolderSpec::WallCradles(s) => s.block(),
+            HolderSpec::WallVSlots(s) => s.block(),
+            _ => unreachable!(),
+        };
+        assert!(block[0] <= size[0] + 1e-6, "{id}: {block:?} wider than {size:?}");
+        assert!(block[1] <= size[1] - 5.95 + 1e-6, "{id}: {block:?} deeper than {size:?}");
+        assert!(block[2] <= size[2] + 1e-6, "{id}: {block:?} taller than {size:?}");
+    }
+}
+
+/// Volume of `solid` inside a box.
+fn inside(solid: &Solid, size: [f64; 3], at: [f64; 3]) -> f64 {
+    (solid ^ &bingrove_core::geom::kernel::cuboid(size, at)).volume()
+}
+
+#[test]
+fn holes_go_down_and_through_holes_come_out_below() {
+    let p = Profile { seg: 32, ..Profile::default() };
+    let spec = WallHolesSpec { d: 10.0, depth: 20.0, count: [3, 1], ..WallHolesSpec::default() }.fit();
+    let h = HolderSpec::WallHoles(spec.clone());
+    let solid = wall::holder(&h, true, MagnetMode::None, &p).solid;
+    let [w, _, _] = h.size();
+    let back = h.size()[1] - 5.95;
+    let [_, _, top] = spec.block();
+    // Over the middle hole, near its mouth: empty; under it in the floor: solid.
+    let probe = [2.0, 2.0, 2.0];
+    let at = |z: f64| [w / 2.0 - 1.0, back / 2.0 - 1.0, z];
+    assert!(inside(&solid, probe, at(top - 3.0)) < 0.01);
+    assert!((inside(&solid, [2.0, 2.0, 0.6], at(0.3)) - 2.4).abs() < 0.01);
+    // Through: the same hole open at the bottom.
+    let through = HolderSpec::WallHoles(WallHolesSpec { through: true, ..spec }.fit());
+    let solid = wall::holder(&through, true, MagnetMode::None, &p).solid;
+    assert!(inside(&solid, [2.0, 2.0, 0.6], at(0.3)) < 0.01);
+}
+
+#[test]
+fn cradles_step_up_and_vslots_open_to_the_front() {
+    let p = Profile { seg: 32, ..Profile::default() };
+    let set = |id: &str| wall_sets().into_iter().find(|s| s.id == id).unwrap().holder;
+    let h = set("wall_extensions");
+    let HolderSpec::WallCradles(c) = &h else { panic!() };
+    assert!(c.stepped);
+    let solid = wall::holder(&h, true, MagnetMode::None, &p).solid;
+    // The front strip of each column ends at its own top, a unit above the one before.
+    let w = h.size()[0];
+    let [width, _, _] = c.block();
+    let mut x = w / 2.0 - width / 2.0;
+    let mut tops = Vec::new();
+    for slot in &c.slots {
+        let place = c.place(slot);
+        let column = &solid ^ &bingrove_core::geom::kernel::cuboid([place - 1.0, 2.0, 200.0], [x + 0.5, 0.0, -1.0]);
+        tops.push(column.bounding_box().max.z);
+        x += place;
+    }
+    for k in 1..tops.len() {
+        assert!((tops[k] - tops[k - 1] - UNIT).abs() < 1e-3, "{tops:?}");
+    }
+    // Pliers: the slot is open at the front just under the shelf's top.
+    let h = set("wall_pliers");
+    let HolderSpec::WallVSlots(v) = &h else { panic!() };
+    let [width, _, top] = v.block();
+    let w = h.size()[0];
+    let x = w / 2.0 - width / 2.0 + 1.6 + (v.slots[0].width + v.clearance) / 2.0;
+    let solid = wall::holder(&h, true, MagnetMode::None, &p).solid;
+    assert!(inside(&solid, [2.0, 2.0, 2.0], [x - 1.0, 0.0, top - 4.0]) < 0.01);
+    let closed = HolderSpec::WallVSlots(WallVSlotSpec { closed_front: true, ..v.clone() }.fit());
+    let solid = wall::holder(&closed, true, MagnetMode::None, &p).solid;
+    assert!(inside(&solid, [1.0, 1.0, 2.0], [x - 0.5, 0.05, top - 4.0]) > 1.9);
+}
+
+#[test]
+fn a_wall_holder_hangs_like_a_bin() {
+    let p = Profile { seg: 32, ..Profile::default() };
+    let set = wall_sets().into_iter().find(|s| s.id == "wall_pliers").unwrap().holder;
+    let [cw, ch] = set.cells();
+    let mut placement = tray(0, 0, [cw, ch]);
+    placement.holder = Some(set);
+    let mut project = wall_project(true, vec![placement]);
+    project.drawer.width = 42.0 * cw.max(3) as f64;
+    let plan = plan(&project).unwrap();
+    assert!(matches!(plan.parts[1].part, PartSpec::WallHolder { hooks: true, .. }));
+    assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    let (plate, part) = seated(&plan, &p);
+    assert!(overlap(&plate, &part, 0.0, 0.0) < 0.01);
+    assert!(overlap(&plate, &part, HOOK_LIFT, 0.0) < 0.01);
+    assert!(overlap(&plate, &part, HOOK_LIFT, 3.0) < 0.01);
+    assert!(overlap(&plate, &part, 0.0, 1.0) > 3.0);
+}
+
+#[test]
+fn holders_in_the_wrong_place_are_warned_about() {
+    let wall_holder = wall_sets()[0].holder.clone();
+    let mut on_drawer = tray(0, 0, wall_holder.cells());
+    on_drawer.holder = Some(wall_holder);
+    let mut project = wall_project(true, vec![on_drawer]);
+    project.options.kind = Kind::Surface;
+    let plan_ = plan(&project).unwrap();
+    assert!(plan_.warnings.iter().any(|w| matches!(w, Warning::WallHolderOffWall { .. })), "{:?}", plan_.warnings);
+    let drawer_holder = HolderSpec::Holes(bingrove_core::model::HolesSpec::default());
+    let mut on_wall = tray(0, 0, drawer_holder.cells());
+    on_wall.holder = Some(drawer_holder);
+    let plan_ = plan(&wall_project(true, vec![on_wall])).unwrap();
+    assert!(plan_.warnings.iter().any(|w| matches!(w, Warning::HolderNotForWall { .. })), "{:?}", plan_.warnings);
+}
+
+#[test]
+fn the_solver_hangs_sets_and_trays() {
+    use bingrove_core::model::{ItemKind, ItemRequest};
+    let mut project = wall_project(true, vec![]);
+    project.drawer.width = 8.0 * 42.0;
+    project.drawer.depth = 6.0 * 42.0;
+    project.items = vec![
+        ItemRequest {
+            name: "Verlängerungen".into(),
+            quantity: 1,
+            what: ItemKind::Holder { holder: None, set: Some("wall_extensions".into()), count: None },
+        },
+        ItemRequest {
+            name: "Schraubendreher".into(),
+            quantity: 1,
+            what: ItemKind::Holder { holder: None, set: Some("wall_screwdrivers".into()), count: Some(10) },
+        },
+        ItemRequest {
+            name: "Ablage".into(),
+            quantity: 2,
+            what: ItemKind::Bin { cells: [2, 1], units: Some(6), dividers: [1, 1] },
+        },
+    ];
+    let plan = plan(&project).unwrap();
+    assert_eq!(plan.placements.len(), 4, "{:?}", plan.warnings);
+    let names: Vec<_> = plan.parts.iter().map(|e| e.name.as_str()).collect();
+    assert!(names.iter().any(|n| n.starts_with("wandhalter_wiegen_Verlaengerungen_gestuft")), "{names:?}");
+    assert!(
+        names.iter().any(|n| n.starts_with("wandhalter_loecher_Schraubendreher") && n.contains("_durch")),
+        "{names:?}"
+    );
+    assert!(names.contains(&"wandbin_2x1_6u.stl"), "{names:?}");
+    // Ten screwdrivers in rows of at most eight.
+    let screwdrivers = plan.placements.iter().find_map(|p| match &p.placement.holder {
+        Some(HolderSpec::WallHoles(w)) => Some(w.count),
+        _ => None,
+    });
+    assert_eq!(screwdrivers, Some([5, 2]));
+}
+
+#[test]
+fn vslot_holders_read_both_spellings() {
+    for (json, wall) in [
+        (r#"{"kind": "vslots"}"#, false),
+        (r#"{"kind": "v_slots"}"#, false),
+        (r#"{"kind": "wall_vslots"}"#, true),
+        (r#"{"kind": "wall_v_slots"}"#, true),
+    ] {
+        let h: HolderSpec = serde_json::from_str(json).unwrap();
+        assert_eq!(h.is_wall(), wall, "{json}");
+    }
+    let h = HolderSpec::VSlots(Default::default());
+    assert!(serde_json::to_string(&h).unwrap().contains(r#""kind":"vslots""#));
 }

@@ -29,14 +29,16 @@ pub fn ascii_plan(plan: &Plan) -> String {
         g.plate[1],
         plan.usable_area()
     );
-    let _ = writeln!(
-        s,
-        "margins: left {}, right {}, front {}, back {}",
-        zone(Side::Left),
-        zone(Side::Right),
-        zone(Side::Front),
-        zone(Side::Back)
-    );
+    if plan.kind == crate::model::Kind::Drawer {
+        let _ = writeln!(
+            s,
+            "margins: left {}, right {}, front {}, back {}",
+            zone(Side::Left),
+            zone(Side::Right),
+            zone(Side::Front),
+            zone(Side::Back)
+        );
+    }
     // Free cells show the plate.
     let mut cell = vec![vec![".".to_string(); nx as usize]; ny as usize];
     for (i, p) in plan.placements.iter().enumerate() {
@@ -49,14 +51,19 @@ pub fn ascii_plan(plan: &Plan) -> String {
     }
     let edge = |side: Side| if g.zone(side) == Zone::Edge { '~' } else { '#' };
     let width = 3 * nx as usize;
-    let _ = writeln!(s, "back");
+    let wall = plan.kind == crate::model::Kind::Wall;
+    let _ = writeln!(s, "{}", if wall { "top (the wall seen from the front)" } else { "back" });
     let _ = writeln!(s, " {}", edge(Side::Back).to_string().repeat(width + 2));
     for row in cell.iter().rev() {
         let line: String = row.iter().map(|c| format!("{c:^3}")).collect();
         let _ = writeln!(s, " {}{line}{}", edge(Side::Left), edge(Side::Right));
     }
     let _ = writeln!(s, " {}", edge(Side::Front).to_string().repeat(width + 2));
-    let _ = writeln!(s, "front   (~ edge zone that bins reach into, # solid plate margin, . free cell)");
+    if wall {
+        let _ = writeln!(s, "bottom  (. free cell; parts hang on a hook in every cell)");
+    } else {
+        let _ = writeln!(s, "front   (~ edge zone that bins reach into, # solid plate margin, . free cell)");
+    }
     for (i, p) in plan.placements.iter().enumerate() {
         let part = &plan.parts[p.part];
         let label = p.placement.label.as_deref().map(|l| format!(" – {l}")).unwrap_or_default();

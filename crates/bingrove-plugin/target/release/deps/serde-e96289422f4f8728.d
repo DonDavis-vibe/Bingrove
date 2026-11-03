@@ -1,0 +1,14 @@
+/mnt/LNXGames/vibe_coding/Redneckfinity/crates/bingrove-plugin/target/release/deps/serde-e96289422f4f8728.d: /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /mnt/LNXGames/vibe_coding/Redneckfinity/crates/bingrove-plugin/target/release/build/serde-348e83afedee65db/out/private.rs
+
+/mnt/LNXGames/vibe_coding/Redneckfinity/crates/bingrove-plugin/target/release/deps/libserde-e96289422f4f8728.rlib: /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /mnt/LNXGames/vibe_coding/Redneckfinity/crates/bingrove-plugin/target/release/build/serde-348e83afedee65db/out/private.rs
+
+/mnt/LNXGames/vibe_coding/Redneckfinity/crates/bingrove-plugin/target/release/deps/libserde-e96289422f4f8728.rmeta: /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /mnt/LNXGames/vibe_coding/Redneckfinity/crates/bingrove-plugin/target/release/build/serde-348e83afedee65db/out/private.rs
+
+/home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs:
+/home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs:
+/home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs:
+/home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs:
+/home/davis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs:
+/mnt/LNXGames/vibe_coding/Redneckfinity/crates/bingrove-plugin/target/release/build/serde-348e83afedee65db/out/private.rs:
+
+# env-dep:OUT_DIR=/mnt/LNXGames/vibe_coding/Redneckfinity/crates/bingrove-plugin/target/release/build/serde-348e83afedee65db/out

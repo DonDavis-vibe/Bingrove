@@ -71,12 +71,17 @@ pub enum PartSpec {
         spec: BinSpec,
         hooks: bool,
     },
+    /// A holder for a wall (`HolderSpec::is_wall`), with keyholes when `hooks`.
+    WallHolder {
+        holder: HolderSpec,
+        hooks: bool,
+    },
 }
 
 impl PartSpec {
     /// Whether the part is made in the wall parts' print frame (lying on its bottom face).
     pub fn is_wall(&self) -> bool {
-        matches!(self, PartSpec::WallBin { .. })
+        matches!(self, PartSpec::WallBin { .. } | PartSpec::WallHolder { .. })
     }
 }
 
@@ -212,6 +217,7 @@ fn part_name(part: &PartSpec, pieces: &[PlatePiece], build: PlateBuild) -> Strin
         PartSpec::Holder(h) => crate::names::holder(h),
         PartSpec::Lid(l) => crate::names::lid(l),
         PartSpec::WallBin { spec, hooks } => crate::names::wall_bin(spec, *hooks),
+        PartSpec::WallHolder { holder, hooks } => crate::names::wall_holder(holder, *hooks),
     }
 }
 
@@ -300,7 +306,21 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
     let mut out = Vec::with_capacity(placed.len());
     for (p, e) in placed {
         let (part, size, turned) = match &p.holder {
-            Some(h) => (PartSpec::Holder(h.clone()), h.size(), false),
+            Some(h) if h.is_wall() => {
+                let w = Warning::WallHolderOffWall { holder: h.slug() };
+                if o.kind != Kind::Wall && !warnings.contains(&w) {
+                    warnings.push(w);
+                }
+                let hooks = build.hooks;
+                (PartSpec::WallHolder { holder: h.clone(), hooks }, h.size(), false)
+            }
+            Some(h) => {
+                let w = Warning::HolderNotForWall { holder: h.slug() };
+                if o.kind == Kind::Wall && !warnings.contains(&w) {
+                    warnings.push(w);
+                }
+                (PartSpec::Holder(h.clone()), h.size(), false)
+            }
             None if o.kind == Kind::Wall => {
                 let spec = wall_bin(&p.bin);
                 let size = crate::spec::wall_size(spec.cells, spec.units);

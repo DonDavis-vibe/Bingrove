@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::model::{
     BIT_ACROSS_FLATS, BIT_CLEARANCE, CradleSlot, CradleSpec, Drive, HolderSpec, HoleShape, HolesSpec, RingSpec,
-    RoundItem, RowHole, RowSpec, SlotSpec, TroughSpec, VSlot, VSlotSpec,
+    RoundItem, RowHole, RowSpec, SlotSpec, TroughSpec, VSlot, VSlotSpec, WallCradleSpec, WallHolesSpec, WallVSlotSpec,
 };
 use crate::spec::{GRID, WALL, bin_outer};
 
@@ -112,6 +112,26 @@ pub fn capacity(h: &HolderSpec) -> u32 {
         HolderSpec::Cradles(c) => c.slots.len() as u32,
         HolderSpec::VSlots(v) => v.slots.len() as u32,
         HolderSpec::Rings(r) => rings_grid(r).iter().product(),
+        HolderSpec::WallHoles(w) => w.count.iter().product(),
+        HolderSpec::WallCradles(w) => w.slots.len() as u32,
+        HolderSpec::WallVSlots(w) => w.slots.len() as u32,
+    }
+}
+
+/// The holder made for `count` things: a footprint that holds them, or for wall holes as many
+/// holes (in rows of at most eight) on the smallest part.
+pub fn for_count(h: HolderSpec, count: u32) -> HolderSpec {
+    match h {
+        HolderSpec::WallHoles(w) => {
+            let n = count.max(1);
+            let rows = n.div_ceil(8);
+            HolderSpec::WallHoles(WallHolesSpec { count: [n.div_ceil(rows), rows], ..w }.fit())
+        }
+        HolderSpec::WallCradles(_) | HolderSpec::WallVSlots(_) => h,
+        _ => {
+            let cells = cells_for(&h, count);
+            h.with_cells(cells)
+        }
     }
 }
 
@@ -159,6 +179,7 @@ pub fn cells_for(h: &HolderSpec, count: u32) -> [u32; 2] {
         HolderSpec::Row(r) => return row_cells(r),
         HolderSpec::Cradles(c) => return cradle_cells(c),
         HolderSpec::VSlots(v) => return vslot_cells(v),
+        h if h.is_wall() => return h.cells(),
         _ => {}
     }
     let mut best: Option<[u32; 2]> = None;
@@ -256,6 +277,21 @@ pub fn catalog() -> Vec<CatalogEntry> {
             id: "cradles",
             label: "Wiegen (liegende Werkzeuge)",
             holder: HolderSpec::Cradles(CradleSpec::default()),
+        },
+        CatalogEntry {
+            id: "wall_holes",
+            label: "Wand: Löcher stehend",
+            holder: HolderSpec::WallHoles(WallHolesSpec::default().fit()),
+        },
+        CatalogEntry {
+            id: "wall_cradles",
+            label: "Wand: Wiegen (Stäbe lehnen an der Wand)",
+            holder: HolderSpec::WallCradles(WallCradleSpec::default().fit()),
+        },
+        CatalogEntry {
+            id: "wall_vslots",
+            label: "Wand: V-Schlitze (Zangen hängend)",
+            holder: HolderSpec::WallVSlots(WallVSlotSpec::default().fit()),
         },
         CatalogEntry {
             id: "row",
@@ -445,6 +481,7 @@ fn more_sets(socket_sets: &[HolderSet]) -> Vec<HolderSet> {
         holder: rings(30.0, 25.0, "Flaschen"),
         drive: None,
     });
+    out.extend(wall_sets());
     out.push(HolderSet {
         id: "spools",
         label: "Kabelrollen Ø 90 (Ringe)",
@@ -618,6 +655,98 @@ fn base_sets() -> Vec<HolderSet> {
             drive: None,
         },
     ]
+}
+
+/// Sets for a wall: extension bars leaning in stepped sockets, screwdrivers hanging through,
+/// pens and hex keys, pliers, scissors and wrenches standing in V-slots.
+fn wall_sets() -> Vec<HolderSet> {
+    let leak = |s: String| -> &'static str { Box::leak(s.into_boxed_str()) };
+    let bars = |sizes: &[(f64, &str)], title: &str| {
+        let slots = sizes.iter().map(|&(d, l)| RowHole { d, depth: Some(20.0), label: l.into() }).collect();
+        HolderSpec::WallCradles(WallCradleSpec { slots, title: Some(title.into()), ..WallCradleSpec::default() }.fit())
+    };
+    let drives = [(Drive::Quarter, 12.0, "1/4"), (Drive::ThreeEighths, 17.0, "3/8"), (Drive::Half, 22.0, "1/2")];
+    let mut out: Vec<HolderSet> = drives
+        .iter()
+        .map(|&(drive, d, label)| HolderSet {
+            id: leak(format!("wall_extensions_{}", label.replace('/', "_"))),
+            label: leak(format!("Wand: Verlängerungen {label}\" (Wiegen, gestuft)")),
+            holder: bars(&[(d, label); 4], "Verlaengerungen"),
+            drive: Some(drive),
+        })
+        .collect();
+    out.push(HolderSet {
+        id: "wall_extensions",
+        label: "Wand: Verlängerungen 1/4\"–1/2\" (Wiegen, gestuft)",
+        holder: bars(
+            &[(12.0, "1/4"), (12.0, "1/4"), (17.0, "3/8"), (17.0, "3/8"), (22.0, "1/2"), (22.0, "1/2")],
+            "Verlaengerungen",
+        ),
+        drive: None,
+    });
+    let hex: Vec<(f64, &str)> = [1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0]
+        .iter()
+        .map(|&s: &f64| (s * 2.0 / 3f64.sqrt() + 0.3, leak(crate::names::mm(s))))
+        .collect();
+    out.push(HolderSet {
+        id: "wall_hex_keys",
+        label: "Wand: Innensechskant (lehnend)",
+        holder: {
+            let slots = hex.iter().map(|&(d, l)| RowHole { d, depth: Some(15.0), label: l.into() }).collect();
+            HolderSpec::WallCradles(
+                WallCradleSpec { slots, stepped: false, title: Some("Inbus".into()), ..WallCradleSpec::default() }
+                    .fit(),
+            )
+        },
+        drive: None,
+    });
+    let holes = |d: f64, depth: f64, n: u32, through: bool, title: &str| {
+        HolderSpec::WallHoles(
+            WallHolesSpec { d, depth, count: [n, 1], through, title: Some(title.into()), ..WallHolesSpec::default() }
+                .fit(),
+        )
+    };
+    out.push(HolderSet {
+        id: "wall_screwdrivers",
+        label: "Wand: Schraubendreher (hängen durch)",
+        holder: holes(8.0, 12.0, 8, true, "Schraubendreher"),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "wall_pens",
+        label: "Wand: Stifte (stehend)",
+        holder: holes(12.0, 30.0, 6, false, "Stifte"),
+        drive: None,
+    });
+    let vslots = |slots: Vec<(f64, f64, &'static str)>, title: &str| {
+        let slots = slots.into_iter().map(|(width, depth, l)| VSlot { width, depth, label: l.into() }).collect();
+        HolderSpec::WallVSlots(WallVSlotSpec { slots, title: Some(title.into()), ..WallVSlotSpec::default() }.fit())
+    };
+    out.push(HolderSet {
+        id: "wall_pliers",
+        label: "Wand: Zangen (V-Schlitze)",
+        holder: vslots(vec![(14.0, 25.0, ""), (16.0, 25.0, ""), (20.0, 30.0, ""), (24.0, 30.0, "")], "Zangen"),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "wall_scissors",
+        label: "Wand: Scheren (V-Schlitze)",
+        holder: vslots(vec![(10.0, 25.0, ""), (10.0, 25.0, ""), (12.0, 25.0, "")], "Scheren"),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "wall_wrenches",
+        label: "Wand: Maulschlüssel 6–24 (V-Schlitze)",
+        holder: vslots(
+            [6.0, 7.0, 8.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 17.0, 19.0, 22.0, 24.0]
+                .iter()
+                .map(|&k: &f64| (k * 0.45 + 3.0, 12.0 + k * 0.4, leak(crate::names::mm(k))))
+                .collect(),
+            "Maulschluessel",
+        ),
+        drive: None,
+    });
+    out
 }
 
 #[cfg(test)]

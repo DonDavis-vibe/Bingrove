@@ -194,11 +194,18 @@ pub fn lid(l: &LidSpec) -> String {
 pub fn holder(h: &HolderSpec) -> String {
     match h {
         HolderSpec::Tape(t) => tape(t),
+        h if h.is_wall() => wall_holder(h, true),
         _ => {
             let [gx, gy] = h.cells();
             format!("halter_{}_{gx}x{gy}_{}u.stl", h.slug(), h.units())
         }
     }
+}
+
+/// A holder hanging on a wall plate; `_ohne_haken` without keyholes.
+pub fn wall_holder(h: &HolderSpec, hooks: bool) -> String {
+    let [gx, gy] = h.cells();
+    format!("wandhalter_{}_{gx}x{gy}_{}u{}.stl", h.slug(), h.units(), if hooks { "" } else { "_ohne_haken" })
 }
 
 pub fn tape(t: &TapeSpec) -> String {

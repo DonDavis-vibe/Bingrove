@@ -1,0 +1,2 @@
+cargo:rustc-link-lib=static=wit_bindgen_cabi_wasip3_0_63_0
+cargo:rustc-link-search=native=/mnt/LNXGames/vibe_coding/Redneckfinity/crates/bingrove-plugin/target/wasm32-wasip2/release/build/wit-bindgen-1bc2294d912a0cb4/out
