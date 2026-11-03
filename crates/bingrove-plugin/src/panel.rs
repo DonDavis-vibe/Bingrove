@@ -833,6 +833,7 @@ impl DrawerPanel {
             Action { id: "div_none".into(), label: "Fächer entfernen".into() },
             Action { id: "label_tab".into(), label: "Label-Lasche an/aus".into() },
             Action { id: "scoop".into(), label: "Griffmulde an/aus".into() },
+            Action { id: "lid".into(), label: "Deckel an/aus".into() },
             Action { id: "open_front".into(), label: "Vorne offen an/aus".into() },
             Action { id: "fingers".into(), label: "Fingerausschnitte an/aus".into() },
             Action { id: "window".into(), label: "Fenster vorne an/aus".into() },
@@ -861,6 +862,12 @@ impl DrawerPanel {
                 }
                 if q.extents.iter().any(|&e| e > 0.0) {
                     badges.push("↔".into());
+                }
+                if pl.lid {
+                    badges.push("Deckel".into());
+                }
+                if pl.bin.open_front {
+                    badges.push("offen".into());
                 }
                 GridItem {
                     id: item_id(pl),
@@ -980,6 +987,7 @@ impl DrawerPanel {
                     p.bin.scoop_sides = sides;
                 })
             }
+            ("lid", _, Some(on), _) => self.edit_selected(|p| p.lid = on),
             ("open_front", _, Some(on), _) => self.edit_selected(|p| p.bin.open_front = on),
             ("fingers", _, Some(on), _) => self.edit_selected(|p| p.bin.finger_cutouts = on),
             ("window", _, Some(on), _) => {
@@ -1215,6 +1223,7 @@ impl DrawerPanel {
                 ),
             ));
             let mut extras = vec![
+                check("sel_lid", "Deckel mitdrucken", first.lid),
                 check("sel_open_front", "vorne offen", first.bin.open_front),
                 check("sel_fingers", "Fingerausschnitte", first.bin.finger_cutouts),
                 check("sel_window", "Fenster vorne", first.bin.window.is_some()),
@@ -1767,6 +1776,7 @@ impl DrawerPanel {
                         "div_none" => p.bin.dividers = [1, 1],
                         "label_tab" => p.bin.label_tab = !p.bin.label_tab,
                         "scoop" => p.bin.scoop = if p.bin.scoop > 0 { 0 } else { 60 },
+                        "lid" => p.lid = !p.lid,
                         "open_front" => p.bin.open_front = !p.bin.open_front,
                         "fingers" => p.bin.finger_cutouts = !p.bin.finger_cutouts,
                         "window" => p.bin.window = p.bin.window.is_none().then(bingrove_core::model::Window::default),

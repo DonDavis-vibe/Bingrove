@@ -60,6 +60,31 @@ pub struct BinSpec {
     pub label_text: Option<String>,
 }
 
+/// A push-on lid for a bin: a plate with the stacking lip on top, so another bin stands on it,
+/// and a plug underneath that sits in the bin's lip, with small bumps that click under it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LidSpec {
+    pub cells: [u32; 2],
+    /// The plate's thickness.
+    pub thickness: f64,
+    pub clicks: bool,
+}
+
+impl Default for LidSpec {
+    fn default() -> Self {
+        LidSpec { cells: [1, 1], thickness: 2.0, clicks: true }
+    }
+}
+
+impl LidSpec {
+    /// Outer size.
+    pub fn size(&self) -> [f64; 3] {
+        let [w, d] = self.cells.map(bin_outer);
+        [w, d, self.thickness + crate::spec::LIP_H + crate::spec::LID_PLUG]
+    }
+}
+
 /// A window cut into the front wall: `width` at the bottom, the sides slanting outwards by
 /// `angle` degrees from the vertical, the bottom at about a third of the wall's height.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -966,11 +991,14 @@ pub struct Placement {
     /// What goes in, shown in plans and lists.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// A lid for this bin is printed too.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lid: bool,
 }
 
 impl Placement {
     pub fn bin(x: u32, y: u32, bin: BinSpec) -> Self {
-        Placement { x, y, bin, holder: None, edges: EdgeUse::default(), label: None }
+        Placement { x, y, bin, holder: None, edges: EdgeUse::default(), label: None, lid: false }
     }
 
     /// Footprint in cells.

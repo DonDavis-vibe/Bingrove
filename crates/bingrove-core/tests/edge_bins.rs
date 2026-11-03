@@ -205,3 +205,51 @@ fn label_scoop_and_grid_dividers() {
     assert!(fm.volume() - pm.volume() > 10_000.0, "{} vs {}", fm.volume(), pm.volume());
     assert_eq!(pm.bbox(), fm.bbox());
 }
+
+#[test]
+fn a_lid_sits_on_its_bin_and_carries_another() {
+    use bingrove_core::geom::lid;
+    use bingrove_core::model::{LidSpec, Placement};
+    use bingrove_core::spec::{LID_PLUG, LIP_H};
+    let profile = Profile::default();
+    let spec = BinSpec { cells: [2, 1], units: 6, ..BinSpec::default() };
+    let bin_part = bin::bin(&spec, &profile);
+    let lid_part = lid::lid(&LidSpec { cells: [2, 1], clicks: false, ..LidSpec::default() }, &profile);
+    let clicked = lid::lid(&LidSpec { cells: [2, 1], ..LidSpec::default() }, &profile);
+    let (bm, lm) = (bin_part.mesh().unwrap(), lid_part.mesh().unwrap());
+    assert!(lm.is_closed(), "the lid is not watertight");
+    assert!(clicked.mesh().unwrap().is_closed());
+    assert_eq!(clicked.name, "deckel_2x1_klick.stl");
+    assert_eq!(lid_part.name, "deckel_2x1.stl");
+    let bin_top = bm.bbox().1[2] as f64;
+    // The lid's plug goes LID_PLUG deep into the bin's lip without touching it; only the click
+    // bumps press into the lip, and only a little.
+    let on = lid_part.solid.translate(Vec3::new(0.0, 0.0, bin_top - LID_PLUG));
+    let hit = (&on ^ &bin_part.solid).volume();
+    assert!(hit < 1e-3, "the lid cuts {hit:.3} mm³ into its bin");
+    let bumps = (&clicked.solid.translate(Vec3::new(0.0, 0.0, bin_top - LID_PLUG)) ^ &bin_part.solid).volume();
+    assert!(bumps > 0.5 && bumps < 40.0, "the click bumps press {bumps:.2} mm³ into the lip");
+    // Another bin stands on the lid: its foot sinks at least 3.5 mm into the lid's lip.
+    let lid_top = bin_top - LID_PLUG + lm.bbox().1[2] as f64;
+    let sunk = (0..=12)
+        .map(|k| 3.5 + k as f64 * 0.1)
+        .rev()
+        .find(|&s| (&bin_part.solid.translate(Vec3::new(0.0, 0.0, lid_top - s)) ^ &on).volume() < 1e-3)
+        .unwrap_or(0.0);
+    assert!(sunk >= 3.5, "a bin on the lid sinks only {sunk} mm into the lip (lip is {LIP_H})");
+    // A plan prints one lid kind per footprint, as often as asked.
+    let mut project = DrawerProject {
+        drawer: DrawerSpec { name: "Deckel".into(), width: 150.0, depth: 108.0, height: 60.0 },
+        ..DrawerProject::default()
+    };
+    project.placements = vec![
+        Placement { lid: true, ..Placement::bin(0, 0, BinSpec { cells: [2, 1], units: 6, ..BinSpec::default() }) },
+        Placement { lid: true, ..Placement::bin(0, 1, BinSpec { cells: [2, 1], units: 6, ..BinSpec::default() }) },
+        Placement::bin(2, 0, BinSpec { cells: [1, 2], units: 6, ..BinSpec::default() }),
+    ];
+    let plan = plan(&project).unwrap();
+    let lids: Vec<_> = plan.parts.iter().filter(|b| b.name.starts_with("deckel_")).collect();
+    assert_eq!(lids.len(), 1, "{:?}", plan.parts.iter().map(|b| &b.name).collect::<Vec<_>>());
+    assert_eq!(lids[0].quantity, 2);
+    assert!(plan.parts.iter().all(|b| b.size[2] > 0.0));
+}

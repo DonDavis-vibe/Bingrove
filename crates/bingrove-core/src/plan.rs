@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::grid::{Grid, PlanError, Zone};
 use crate::layout::{Repair, repair_cover, validate_cover};
-use crate::model::{BinSpec, Cover, DrawerProject, EdgeMode, HolderSpec, Kind, Mount, Placement, PlateFloor, Side};
+use crate::model::{
+    BinSpec, Cover, DrawerProject, EdgeMode, HolderSpec, Kind, LidSpec, Mount, Placement, PlateFloor, Side,
+};
 use crate::solver::{Heights, auto_layout_cover, heights};
 use crate::spec::{BIN_GAP, CONNECTOR_DEPTH, EDGE_GAP, GRID, LIP_H, bin_outer, body_height};
 use crate::split::{extents, split_plate};
@@ -62,6 +64,7 @@ pub enum PartSpec {
         edge_mode: EdgeMode,
     },
     Holder(HolderSpec),
+    Lid(LidSpec),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -192,6 +195,7 @@ fn part_name(part: &PartSpec, pieces: &[PlatePiece], floor: PlateFloor, mount: M
         }
         PartSpec::Bin { spec, extents, edge_mode } => crate::names::edge_bin(spec, *extents, *edge_mode),
         PartSpec::Holder(h) => crate::names::holder(h),
+        PartSpec::Lid(l) => crate::names::lid(l),
     }
 }
 
@@ -283,6 +287,18 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
             }
         };
         out.push(PlacedPart { placement: p, extents: e, part: index, turned });
+    }
+    // Lids are parts of their own, one kind per footprint, printed as often as asked for.
+    for p in out.iter().map(|q| &q.placement).filter(|p| p.lid && p.holder.is_none() && p.bin.lip) {
+        let lid = LidSpec { cells: p.bin.cells, ..LidSpec::default() };
+        let part = PartSpec::Lid(lid.clone());
+        match parts.iter_mut().find(|b| b.part == part) {
+            Some(b) => b.quantity += 1,
+            None => {
+                let name = part_name(&part, &pieces, o.floor, mount);
+                parts.push(BomEntry { name, part, quantity: 1, size: lid.size() });
+            }
+        }
     }
 
     for b in &parts {

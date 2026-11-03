@@ -77,6 +77,11 @@ pub const TAPE_FILLET: f64 = 5.0;
 /// Air between rolls and to the bin edge.
 pub const TAPE_ROLL_GAP: f64 = 1.0;
 
+/// A lid's plug reaching down into the bin's lip, the air around it and the click bumps.
+pub const LID_PLUG: f64 = 3.5;
+pub const LID_GAP: f64 = 0.2;
+pub const LID_CLICK: f64 = 0.3;
+
 /// Socket pegs: the base plate they stand on above the bin floor, and their height.
 pub const PEG_BASE: f64 = 2.0;
 pub const PEG_H: f64 = 8.0;

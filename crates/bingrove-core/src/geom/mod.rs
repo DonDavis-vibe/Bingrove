@@ -6,6 +6,7 @@ pub mod calibration;
 pub mod holders;
 pub mod insert;
 pub mod kernel;
+pub mod lid;
 pub mod tape;
 pub mod text;
 
@@ -51,6 +52,7 @@ pub fn part(plan: &Plan, index: usize, p: &Profile) -> Part {
             part
         }
         PartSpec::Holder(h) => holders::holder(h, p),
+        PartSpec::Lid(l) => lid::lid(l, p),
     }
 }
 

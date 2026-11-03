@@ -1,7 +1,9 @@
 //! File names of the parts, German and ASCII like the original script, so existing print lists
 //! and folders keep their names.
 
-use crate::model::{BinSpec, DividerMode, EdgeMode, HolderSpec, MagnetMode, Mount, PlateFloor, Side, TapeSpec};
+use crate::model::{
+    BinSpec, DividerMode, EdgeMode, HolderSpec, LidSpec, MagnetMode, Mount, PlateFloor, Side, TapeSpec,
+};
 
 pub fn baseplate(row: usize, col: usize, cells: [u32; 2], floor: PlateFloor, mount: Mount) -> String {
     let col = char::from(b'A' + col as u8);
@@ -127,6 +129,11 @@ fn with_options(mut name: String, b: &BinSpec) -> String {
         MagnetMode::Corners => name += "_magnete_ecken",
     }
     name + ".stl"
+}
+
+pub fn lid(l: &LidSpec) -> String {
+    let [gx, gy] = l.cells;
+    format!("deckel_{gx}x{gy}{}.stl", if l.clicks { "_klick" } else { "" })
 }
 
 pub fn holder(h: &HolderSpec) -> String {
