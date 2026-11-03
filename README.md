@@ -78,19 +78,18 @@ To build it yourself, see [Development](#development).
 
 The panel has three parts:
 
-- **Left**, three tabs. *Projekt*: kind (drawer, surface, wall), name, sizes, margins and the
-  plate. *Belegung*: how many compartments you want; Bingrove offers the evenest mixes of bin
+- **Left**, three tabs. *Project*: kind (drawer, surface, wall), name, sizes, margins and the
+  plate. *Layout*: how many compartments you want; Bingrove offers the evenest mixes of bin
   sizes that tile the grid ("10 × 3×1", "5 × 2×2 + 5 × 2×1", …), and one click lays them out.
-  *Ausgabe*: printer, print lists, magnet sizes. Below the tabs: the grid's summary, warnings,
-  and the buttons *Automatisch belegen* (lay out afresh), *Generieren + Druckliste* and
-  *Kalibrierteile*.
+  *Output*: printer, print lists, magnet sizes. Below the tabs: the grid's summary, warnings,
+  and the buttons *Lay out automatically*, *Generate + print list* and *Calibration pieces*.
 - **Middle**, the plan as a grid editor. Drag to move, pull an edge to resize, draw new bins on
   free cells, right-click for a menu. A click on a bin opens its settings below the grid: height,
   compartments, label shelf, scoop, engraving, holder kind and the holder's own sizes.
 - **Right**, the 3D preview and the parts list. A click on a part shows it on the print bed, with
   its full name and exact size underneath.
 
-**Generieren + Druckliste** writes everything to `Gridfinity/<name>` in the library and makes two
+**Generate + print list** writes everything to `Gridfinity/<name>` in the library and makes two
 print lists: `<name> – Teile` (each STL with its quantity) and `<name> – Druckbetten` (a 3MF per
 bed, parts arranged). One click in Meshgrove's history undoes it. The project file
 `*.gridfinity.json` reopens with "Mit Bingrove öffnen" from the gallery.
@@ -213,7 +212,7 @@ drawer logic grew out of a Python script for two drawers, whose 25 parts the tes
 
 ## Known limits
 
-- Presets describe drawers only; a workbench starts from *Art → Fläche*, a wall from *Art → Wand*.
+- Presets describe drawers only; a workbench starts from *Kind → Surface*, a wall from *Kind → Wall*.
 - Bins are rectangles. L-shaped bins, wall patterns, lite bins, sliding lids, half-grid and a
   case with a lid are not there yet.
 - Long holders (a whole socket set) are not split for the print bed; the plan warns.
@@ -222,7 +221,8 @@ drawer logic grew out of a Python script for two drawers, whose 25 parts the tes
   the plate only wall parts fit.
 - Skadis hooks hold the plate by its top edge only (the board's slots are 40 mm apart, the grid
   42 mm).
-- The panel speaks German; the tools and this file English.
+- The panel follows Meshgrove's language, German or English. File, folder and print list names
+  stay German, so existing lists keep working, and so does the command line.
 
 ## License
 

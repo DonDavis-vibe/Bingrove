@@ -749,9 +749,91 @@ fn wall_sets() -> Vec<HolderSet> {
     out
 }
 
+/// The English name of a catalogue entry or set, by its id; `catalog` and `sets` carry the
+/// German one.
+pub fn english_label(id: &str) -> Option<String> {
+    if let Some(sockets) = id.strip_prefix("pegs_") {
+        return english_label(&format!("sockets_{sockets}")).map(|l| format!("{l} on pegs"));
+    }
+    let name = match id {
+        "tape" => "Tape rolls",
+        "aa" => "AA cells",
+        "aaa" => "AAA cells",
+        "c" => "C cells",
+        "d" => "D cells",
+        "18650" => "18650 cells",
+        "21700" => "21700 cells",
+        "bits" => "1/4\" bits",
+        "pens" => "Pens (standing)",
+        "pens_lying" => "Pens (lying)",
+        "screwdrivers" => "Screwdrivers (lying)",
+        "shank_6" => "Router shanks 6 mm",
+        "shank_6_35" => "Router shanks 1/4\"",
+        "shank_8" => "Router shanks 8 mm",
+        "shank_12" => "Router shanks 12 mm",
+        "shank_12_7" => "Router shanks 1/2\"",
+        "dremel" => "Dremel shanks 3.2 mm",
+        "hex_5_16" => "Hex shanks 5/16\"",
+        "hex_3_8" => "Hex shanks 3/8\"",
+        "sd" => "SD cards (slots)",
+        "usb" => "USB sticks (slots)",
+        "cr2032" => "Coin cells (slots)",
+        "swatches" => "Filament swatches (slots)",
+        "blades" => "Saw blades (slots)",
+        "cradles" => "Cradles (lying tools)",
+        "vslots" => "V-slots",
+        "rings" => "Rings",
+        "wall_holes" => "Wall: standing holes",
+        "wall_cradles" => "Wall: cradles (bars lean against the wall)",
+        "wall_vslots" => "Wall: V-slots (pliers)",
+        "row" => "Row of holes (your own sizes)",
+        "extensions" => "Extensions 1/4\"–1/2\" (cradles)",
+        "ratchets" => "Ratchets (cradles, stepped)",
+        "pliers" => "Pliers (V-slots)",
+        "scissors" => "Scissors and side cutters (V-slots)",
+        "wrenches" => "Wrenches 6–24 (ramp)",
+        "hex_keys_tilted" => "Hex keys tilted (20°)",
+        "pens_tilted" => "Pens tilted (20°)",
+        "spray_cans" => "Spray cans Ø 66 (rings)",
+        "bottles" => "Bottles Ø 30 (rings)",
+        "spools" => "Cable reels Ø 90 (rings)",
+        "sockets_1_4_mm" => "Sockets 1/4\" metric (4–14)",
+        "sockets_3_8_mm" => "Sockets 3/8\" metric (8–22)",
+        "sockets_1_2_mm" => "Sockets 1/2\" metric (10–32)",
+        "sockets_1_4_in" => "Sockets 1/4\" inch (5/32–9/16)",
+        "sockets_3_8_in" => "Sockets 3/8\" inch (3/8–7/8)",
+        "sockets_1_2_in" => "Sockets 1/2\" inch (7/16–1 1/4)",
+        "sockets_1_4_both" => "Sockets 1/4\" metric + inch (two rows, stepped)",
+        "hex_keys" => "Hex keys 1.5–10 (standing)",
+        "drills" => "Drills 1–10 × 0.5 (two rows)",
+        "screwdrivers_standing" => "Screwdrivers standing (blade 2–8)",
+        "wall_extensions_1_4" => "Wall: extensions 1/4\" (cradles, stepped)",
+        "wall_extensions_3_8" => "Wall: extensions 3/8\" (cradles, stepped)",
+        "wall_extensions_1_2" => "Wall: extensions 1/2\" (cradles, stepped)",
+        "wall_extensions" => "Wall: extensions 1/4\"–1/2\" (cradles, stepped)",
+        "wall_hex_keys" => "Wall: hex keys (leaning)",
+        "wall_screwdrivers" => "Wall: screwdrivers (hanging through)",
+        "wall_pens" => "Wall: pens (standing)",
+        "wall_pliers" => "Wall: pliers (V-slots)",
+        "wall_scissors" => "Wall: scissors (V-slots)",
+        "wall_wrenches" => "Wall: wrenches 6–24 (V-slots)",
+        _ => return None,
+    };
+    Some(name.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_holder_and_set_has_an_english_name() {
+        let ids = catalog().into_iter().map(|c| c.id).chain(sets().into_iter().map(|s| s.id));
+        for id in ids {
+            let name = english_label(id).unwrap_or_else(|| panic!("no English name for {id}"));
+            assert!(name.is_ascii() || !name.contains(['ä', 'ö', 'ü', 'ß']), "{id}: {name}");
+        }
+    }
 
     #[test]
     fn capacities_and_sizes() {

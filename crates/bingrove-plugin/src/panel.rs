@@ -26,6 +26,7 @@ use meshgrove_plugin_api::ui::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::lang::{self, tf, tr};
 use crate::{ListMode, default_project};
 use bingrove_core::catalog::catalog;
 
@@ -106,19 +107,23 @@ fn holder_label(h: &HolderSpec) -> String {
         HolderSpec::Bits(_) => "Bits".into(),
         HolderSpec::Troughs(t) => {
             if t.handle.is_some() {
-                "Schraubendreher".into()
+                tr("Schraubendreher", "Screwdrivers").into()
             } else {
-                "liegend".into()
+                tr("liegend", "lying").into()
             }
         }
-        HolderSpec::Row(r) => r.title.clone().unwrap_or_else(|| format!("{} Löcher", r.hole_count())),
-        HolderSpec::Slots(_) => "Schlitze".into(),
-        HolderSpec::Cradles(c) => c.title.clone().unwrap_or_else(|| format!("{} Wiegen", c.slots.len())),
-        HolderSpec::VSlots(v) => v.title.clone().unwrap_or_else(|| format!("{} V-Schlitze", v.slots.len())),
-        HolderSpec::Rings(r) => r.label.clone().unwrap_or_else(|| format!("Ringe {}", mm(r.d))),
-        HolderSpec::WallHoles(w) => w.title.clone().unwrap_or_else(|| format!("{} Löcher", w.count[0] * w.count[1])),
-        HolderSpec::WallCradles(w) => w.title.clone().unwrap_or_else(|| format!("{} Wiegen", w.slots.len())),
-        HolderSpec::WallVSlots(w) => w.title.clone().unwrap_or_else(|| format!("{} V-Schlitze", w.slots.len())),
+        HolderSpec::Row(r) => r.title.clone().unwrap_or_else(|| tf!("{} Löcher", "{} holes", r.hole_count())),
+        HolderSpec::Slots(_) => tr("Schlitze", "Slots").into(),
+        HolderSpec::Cradles(c) => c.title.clone().unwrap_or_else(|| tf!("{} Wiegen", "{} cradles", c.slots.len())),
+        HolderSpec::VSlots(v) => v.title.clone().unwrap_or_else(|| tf!("{} V-Schlitze", "{} V-slots", v.slots.len())),
+        HolderSpec::Rings(r) => r.label.clone().unwrap_or_else(|| tf!("Ringe {}", "Rings {}", mm(r.d))),
+        HolderSpec::WallHoles(w) => {
+            w.title.clone().unwrap_or_else(|| tf!("{} Löcher", "{} holes", w.count[0] * w.count[1]))
+        }
+        HolderSpec::WallCradles(w) => w.title.clone().unwrap_or_else(|| tf!("{} Wiegen", "{} cradles", w.slots.len())),
+        HolderSpec::WallVSlots(w) => {
+            w.title.clone().unwrap_or_else(|| tf!("{} V-Schlitze", "{} V-slots", w.slots.len()))
+        }
     }
 }
 
@@ -485,9 +490,13 @@ impl DrawerPanel {
             }
             None => {
                 let why = match mix.area().cmp(&area) {
-                    Ordering::Less => format!("{} Zellen bleiben frei", area - mix.area()),
-                    Ordering::Greater => format!("{} Zellen zu viel", mix.area() - area),
-                    Ordering::Equal => "so lassen sich die Größen nicht ins Raster legen".to_string(),
+                    Ordering::Less => tf!("{} Zellen bleiben frei", "{} cells stay free", area - mix.area()),
+                    Ordering::Greater => tf!("{} Zellen zu viel", "{} cells too many", mix.area() - area),
+                    Ordering::Equal => tr(
+                        "so lassen sich die Größen nicht ins Raster legen",
+                        "these sizes do not fit the grid this way",
+                    )
+                    .to_string(),
                 };
                 self.state.borrow_mut().mix_edit = Some((mix, why));
             }
@@ -544,7 +553,7 @@ impl DrawerPanel {
                 id: format!("preview:{wanted}"),
                 kind: "preview".into(),
                 params: json!({"project": s.project, "key": wanted}),
-                label: Some("Vorschau".into()),
+                label: Some(tr("Vorschau", "Preview").into()),
             }],
         });
         s.preview_job = Some(wanted);
@@ -566,7 +575,10 @@ impl DrawerPanel {
                 s.revision += 1;
                 Vec::new()
             }
-            Some(e) => vec![Effect::Toast { text: format!("Vorschau fehlgeschlagen: {e}"), level: Level::Warn }],
+            Some(e) => vec![Effect::Toast {
+                text: tf!("Vorschau fehlgeschlagen: {e}", "Preview failed: {e}"),
+                level: Level::Warn,
+            }],
         }
     }
 
@@ -582,7 +594,7 @@ impl DrawerPanel {
         match serde_json::from_value::<meshgrove_plugin_api::Bundle>(bundle) {
             Ok(bundle) => {
                 // Meshgrove may still refuse it; 0.8.2 and newer say so (`bundle_finished`).
-                s.message = Some((Level::Info, handed_over(&bundle, &guest::info().language)));
+                s.message = Some((Level::Info, handed_over(&bundle)));
                 vec![Effect::ApplyBundle { bundle }]
             }
             Err(e) => vec![Effect::Toast { text: e.to_string(), level: Level::Error }],
@@ -633,13 +645,13 @@ impl DrawerPanel {
         let wall = o.kind == Kind::Wall;
         let mut rows = vec![
             row(
-                "Art",
+                tr("Art", "Kind"),
                 select(
                     "kind",
                     &[
-                        ("drawer", "Schubladeneinsatz"),
-                        ("surface", "Fläche (Werkbank, Tisch)"),
-                        ("wall", "Wand (Teile hängen ein)"),
+                        ("drawer", tr("Schubladeneinsatz", "Drawer insert")),
+                        ("surface", tr("Fläche (Werkbank, Tisch)", "Surface (workbench, desk)")),
+                        ("wall", tr("Wand (Teile hängen ein)", "Wall (parts hang on it)")),
                     ],
                     match o.kind {
                         Kind::Drawer => "drawer",
@@ -662,18 +674,23 @@ impl DrawerPanel {
                 decimals: Some(0),
                 enabled: true,
             };
-            rows.push(row("Zellen quer × hoch", Node::row(vec![int("cells_x", cells[0]), int("cells_y", cells[1])])));
             rows.push(row(
-                "Wand",
+                tr("Zellen quer × hoch", "Cells across × up"),
+                Node::row(vec![int("cells_x", cells[0]), int("cells_y", cells[1])]),
+            ));
+            rows.push(row(
+                tr("Wand", "Wall"),
                 Node::Label {
-                    text: format!(
+                    text: tf!(
                         "{:.0} × {:.0} mm; Teile werden 3 mm angehoben eingesetzt und rutschen auf die Haken",
-                        d.width, d.depth
+                        "{:.0} × {:.0} mm; parts go in lifted by 3 mm and slide down onto the hooks",
+                        d.width,
+                        d.depth
                     ),
                     style: TextStyle::Small,
                 },
             ));
-            rows.push(row("Ausladung max.", Node::mm("height", d.height, 0.0, 1000.0)));
+            rows.push(row(tr("Ausladung max.", "Max. reach"), Node::mm("height", d.height, 0.0, 1000.0)));
         } else if surface {
             let cells = plan.map_or([0, 0], |p| p.grid.cells);
             let int = |id: &str, value: u32| Node::NumberInput {
@@ -686,39 +703,47 @@ impl DrawerPanel {
                 decimals: Some(0),
                 enabled: true,
             };
-            rows.push(row("Zellen quer × längs", Node::row(vec![int("cells_x", cells[0]), int("cells_y", cells[1])])));
             rows.push(row(
-                "Platte",
+                tr("Zellen quer × längs", "Cells across × deep"),
+                Node::row(vec![int("cells_x", cells[0]), int("cells_y", cells[1])]),
+            ));
+            rows.push(row(
+                tr("Platte", "Plate"),
                 Node::Label {
-                    text: format!("{:.0} × {:.0} mm, Zellen bleiben frei, wo nichts steht", d.width, d.depth),
+                    text: tf!(
+                        "{:.0} × {:.0} mm, Zellen bleiben frei, wo nichts steht",
+                        "{:.0} × {:.0} mm, cells stay free where nothing stands",
+                        d.width,
+                        d.depth
+                    ),
                     style: TextStyle::Small,
                 },
             ));
-            rows.push(row("Höhe der Bins", Node::mm("height", d.height, 0.0, 1000.0)));
+            rows.push(row(tr("Höhe der Bins", "Bin height"), Node::mm("height", d.height, 0.0, 1000.0)));
         } else {
-            rows.push(row("Breite", Node::mm("width", d.width, 42.0, 1500.0)));
-            rows.push(row("Tiefe", Node::mm("depth", d.depth, 42.0, 1500.0)));
-            rows.push(row("Höhe innen", Node::mm("height", d.height, 0.0, 1000.0)));
+            rows.push(row(tr("Breite", "Width"), Node::mm("width", d.width, 42.0, 1500.0)));
+            rows.push(row(tr("Tiefe", "Depth"), Node::mm("depth", d.depth, 42.0, 1500.0)));
+            rows.push(row(tr("Höhe innen", "Inner height"), Node::mm("height", d.height, 0.0, 1000.0)));
             rows.push(row(
-                "Belegung",
+                tr("Belegung", "Layout"),
                 Node::Checkbox {
                     id: "cover".into(),
-                    label: "Zellen dürfen frei bleiben".into(),
+                    label: tr("Zellen dürfen frei bleiben", "Cells may stay free").into(),
                     checked: o.cover == Cover::Partial,
                     enabled: true,
                 },
             ));
         }
         let drawer_rows = vec![
-            row("Randzone ab", Node::mm("edge_threshold", o.edge_threshold, 0.0, 42.0)),
+            row(tr("Randzone ab", "Edge zone from"), Node::mm("edge_threshold", o.edge_threshold, 0.0, 42.0)),
             row(
-                "Randbins",
+                tr("Randbins", "Edge bins"),
                 select(
                     "edge_mode",
                     &[
-                        ("to_floor", "bis zum Boden (ohne Stützen)"),
-                        ("resting", "aufliegend (Stützen nötig)"),
-                        ("none", "keine – Rand bleibt Platte"),
+                        ("to_floor", tr("bis zum Boden (ohne Stützen)", "to the floor (no supports)")),
+                        ("resting", tr("aufliegend (Stützen nötig)", "resting (needs supports)")),
+                        ("none", tr("keine – Rand bleibt Platte", "none – the margin stays plate")),
                     ],
                     match o.edge_mode {
                         EdgeMode::ToFloor => "to_floor",
@@ -728,18 +753,26 @@ impl DrawerPanel {
                 ),
             ),
             row(
-                "Raster X",
+                tr("Raster X", "Grid X"),
                 select(
                     "align_x",
-                    &[("start", "links bündig"), ("center", "mittig"), ("end", "rechts bündig")],
+                    &[
+                        ("start", tr("links bündig", "flush left")),
+                        ("center", tr("mittig", "centred")),
+                        ("end", tr("rechts bündig", "flush right")),
+                    ],
                     align(o.align[0]),
                 ),
             ),
             row(
-                "Raster Y",
+                tr("Raster Y", "Grid Y"),
                 select(
                     "align_y",
-                    &[("start", "vorne bündig"), ("center", "mittig"), ("end", "hinten bündig")],
+                    &[
+                        ("start", tr("vorne bündig", "flush front")),
+                        ("center", tr("mittig", "centred")),
+                        ("end", tr("hinten bündig", "flush back")),
+                    ],
                     align(o.align[1]),
                 ),
             ),
@@ -754,40 +787,56 @@ impl DrawerPanel {
                 id: "plate".into(),
                 rows: vec![
                     row(
-                        "Platte",
+                        tr("Platte", "Plate"),
                         select(
                             "floor",
-                            &[("solid", "mit Boden"), ("magnets", "Boden mit Magnetlöchern")],
+                            &[
+                                ("solid", tr("mit Boden", "with floor")),
+                                ("magnets", tr("Boden mit Magnetlöchern", "floor with magnet holes")),
+                            ],
                             if o.floor == PlateFloor::Magnets { "magnets" } else { "solid" },
                         ),
                     ),
                     row(
-                        "Halt",
+                        tr("Halt", "Hold"),
                         Node::Checkbox {
                             id: "hooks".into(),
-                            label: "Haken in den Zellen (Teile einhängen; ohne: nur Magnete, jeder Bin passt)".into(),
+                            label: tr(
+                                "Haken in den Zellen (Teile einhängen; ohne: nur Magnete, jeder Bin passt)",
+                                "Hooks in the cells (parts hang on them; without: magnets only, any bin fits)",
+                            )
+                            .into(),
                             checked: o.hooks,
                             enabled: true,
                         },
                     ),
                     row(
-                        "Befestigung",
+                        tr("Befestigung", "Mounting"),
                         Node::row(vec![
                             Node::Checkbox {
                                 id: "screws".into(),
-                                label: "Schraublöcher (Mitte der Eckzellen)".into(),
+                                label: tr(
+                                    "Schraublöcher (Mitte der Eckzellen)",
+                                    "Screw holes (middle of the corner cells)",
+                                )
+                                .into(),
                                 checked: o.mount.screws,
                                 enabled: true,
                             },
                             Node::Checkbox {
                                 id: "connectors".into(),
-                                label: "Schwalbenschwanz zwischen den Teilen".into(),
+                                label: tr("Schwalbenschwanz zwischen den Teilen", "Dovetails between the pieces")
+                                    .into(),
                                 checked: o.mount.connectors,
                                 enabled: true,
                             },
                             Node::Checkbox {
                                 id: "skadis".into(),
-                                label: "Haken für IKEA Skadis (oben, zum Einschieben)".into(),
+                                label: tr(
+                                    "Haken für IKEA Skadis (oben, zum Einschieben)",
+                                    "Hooks for IKEA Skadis (top edge, slide in)",
+                                )
+                                .into(),
                                 checked: o.mount.skadis,
                                 enabled: true,
                             },
@@ -801,13 +850,13 @@ impl DrawerPanel {
                 id: "plate".into(),
                 rows: vec![
                     row(
-                        "Platte",
+                        tr("Platte", "Plate"),
                         select(
                             "floor",
                             &[
-                                ("open", "offener Rahmen"),
-                                ("solid", "mit Boden"),
-                                ("magnets", "Boden mit Magnetlöchern"),
+                                ("open", tr("offener Rahmen", "open frame")),
+                                ("solid", tr("mit Boden", "with floor")),
+                                ("magnets", tr("Boden mit Magnetlöchern", "floor with magnet holes")),
                             ],
                             match o.floor {
                                 PlateFloor::Open => "open",
@@ -817,33 +866,41 @@ impl DrawerPanel {
                         ),
                     ),
                     row(
-                        "Boden",
+                        tr("Boden", "Floor"),
                         Node::row(vec![
                             select(
                                 "style",
-                                &[("skeleton", "skelettiert (Pads)"), ("full", "voll")],
+                                &[
+                                    ("skeleton", tr("skelettiert (Pads)", "skeleton (pads)")),
+                                    ("full", tr("voll", "full")),
+                                ],
                                 if o.style == PlateStyle::Full { "full" } else { "skeleton" },
                             ),
                             Node::Checkbox {
                                 id: "magnets_below".into(),
-                                label: "Magnete von unten".into(),
+                                label: tr("Magnete von unten", "Magnets from below").into(),
                                 checked: has_floor && o.magnets_below,
                                 enabled: has_floor,
                             },
                         ]),
                     ),
                     row(
-                        "Befestigung",
+                        tr("Befestigung", "Mounting"),
                         Node::row(vec![
                             Node::Checkbox {
                                 id: "screws".into(),
-                                label: "Schraublöcher (gesenkt, in den Ecken)".into(),
+                                label: tr(
+                                    "Schraublöcher (gesenkt, in den Ecken)",
+                                    "Screw holes (countersunk, in the corners)",
+                                )
+                                .into(),
                                 checked: has_floor && o.mount.screws,
                                 enabled: has_floor,
                             },
                             Node::Checkbox {
                                 id: "connectors".into(),
-                                label: "Schwalbenschwanz zwischen den Teilen".into(),
+                                label: tr("Schwalbenschwanz zwischen den Teilen", "Dovetails between the pieces")
+                                    .into(),
                                 checked: has_floor && o.mount.connectors,
                                 enabled: has_floor,
                             },
@@ -857,7 +914,7 @@ impl DrawerPanel {
             id: "output".into(),
             rows: vec![
                 row(
-                    "Drucker",
+                    tr("Drucker", "Printer"),
                     Node::Select {
                         id: "printer".into(),
                         options: printers.iter().map(|(v, l)| Choice { value: v.clone(), label: l.clone() }).collect(),
@@ -866,13 +923,13 @@ impl DrawerPanel {
                     },
                 ),
                 row(
-                    "Drucklisten",
+                    tr("Drucklisten", "Print lists"),
                     select(
                         "lists",
                         &[
-                            ("both", "Teile und Druckbetten"),
-                            ("parts", "nur Teile (STL × Anzahl)"),
-                            ("beds", "nur Druckbetten (3MF)"),
+                            ("both", tr("Teile und Druckbetten", "Parts and print beds")),
+                            ("parts", tr("nur Teile (STL × Anzahl)", "parts only (STL × quantity)")),
+                            ("beds", tr("nur Druckbetten (3MF)", "print beds only (3MF)")),
                         ],
                         match s.lists {
                             ListMode::Both => "both",
@@ -881,8 +938,11 @@ impl DrawerPanel {
                         },
                     ),
                 ),
-                row("Magnetloch Ø", Node::mm("magnet_d", s.project.profile.magnet.d, 2.0, 12.0)),
-                row("Magnetloch Tiefe", Node::mm("magnet_h", s.project.profile.magnet.h, 0.5, 6.0)),
+                row(tr("Magnetloch Ø", "Magnet hole Ø"), Node::mm("magnet_d", s.project.profile.magnet.d, 2.0, 12.0)),
+                row(
+                    tr("Magnetloch Tiefe", "Magnet hole depth"),
+                    Node::mm("magnet_h", s.project.profile.magnet.h, 0.5, 6.0),
+                ),
             ],
             submit: None,
         };
@@ -891,9 +951,9 @@ impl DrawerPanel {
             id: "left_tabs".into(),
             selected: s.tab.min(2),
             tabs: vec![
-                tab("Projekt", vec![drawer, plate]),
-                tab("Belegung", self.compartments(s, plan)),
-                tab("Ausgabe", vec![output]),
+                tab(tr("Projekt", "Project"), vec![drawer, plate]),
+                tab(tr("Belegung", "Layout"), self.compartments(s, plan)),
+                tab(tr("Ausgabe", "Output"), vec![output]),
             ],
         }
     }
@@ -920,19 +980,27 @@ impl DrawerPanel {
         let mut nodes = vec![Node::Form {
             id: "bins_form".into(),
             rows: vec![FormRow {
-                label: "Gewünscht".into(),
-                node: Node::row(vec![count("bins".into(), shown, 1.0), small(format!("derzeit {}", current.count()))]),
+                label: tr("Gewünscht", "Wanted").into(),
+                node: Node::row(vec![
+                    count("bins".into(), shown, 1.0),
+                    small(tf!("derzeit {}", "now {}", current.count())),
+                ]),
             }],
             submit: None,
         }];
         let mixes = self.mixes(s, p);
         if mixes.is_empty() {
-            nodes.push(small(format!(
+            nodes.push(small(tf!(
                 "Für {shown} Fächer in {} × {} gibt es keine gleichmäßige Aufteilung",
-                cells[0], cells[1]
+                "There is no even layout for {shown} compartments in {} × {}",
+                cells[0],
+                cells[1]
             )));
         } else {
-            nodes.push(small(format!("Vorschläge für {shown} Fächer (ein Klick belegt die Schublade neu):")));
+            nodes.push(small(tf!(
+                "Vorschläge für {shown} Fächer (ein Klick belegt die Schublade neu):",
+                "Suggestions for {shown} compartments (one click lays them out afresh):"
+            )));
             for (i, m) in mixes.iter().enumerate() {
                 nodes.push(Node::button(format!("mix:{i}"), m.text()));
             }
@@ -957,9 +1025,18 @@ impl DrawerPanel {
         nodes.push(match &s.mix_edit {
             Some((m, why)) => Node::Notice {
                 level: Level::Warn,
-                text: format!("{} Fächer, {} von {area} Zellen: {why}", m.count(), m.area()),
+                text: tf!(
+                    "{} Fächer, {} von {area} Zellen: {why}",
+                    "{} compartments, {} of {area} cells: {why}",
+                    m.count(),
+                    m.area()
+                ),
             },
-            None => small(format!("{} Fächer, {area} Zellen; eine Änderung belegt die Schublade neu", current.count())),
+            None => small(tf!(
+                "{} Fächer, {area} Zellen; eine Änderung belegt die Schublade neu",
+                "{} compartments, {area} cells; a change lays them out afresh",
+                current.count()
+            )),
         });
         nodes
     }
@@ -986,44 +1063,74 @@ impl DrawerPanel {
             zone(Side::Back, 0.0, -m(Side::Back), nx as f32, m(Side::Back)),
         ];
         let wall_actions = vec![
-            Action { id: "taller".into(), label: "Weiter heraus (+1 Einheit)".into() },
-            Action { id: "lower".into(), label: "Flacher (−1 Einheit)".into() },
-            Action { id: "div_x".into(), label: "Fach teilen (quer)".into() },
-            Action { id: "div_y".into(), label: "Fach teilen (in die Tiefe)".into() },
-            Action { id: "div_none".into(), label: "Fächer entfernen".into() },
-            Action { id: "open_front".into(), label: "Vorne offen an/aus".into() },
-            Action { id: "holder_none".into(), label: "Ablage (Wandbin)".into() },
-            Action { id: "holder_wall_holes".into(), label: "Halter: Löcher stehend".into() },
-            Action { id: "holder_wall_cradles".into(), label: "Halter: Wiegen (lehnend)".into() },
-            Action { id: "holder_wall_vslots".into(), label: "Halter: V-Schlitze (Zangen)".into() },
+            Action { id: "taller".into(), label: tr("Weiter heraus (+1 Einheit)", "Further out (+1 unit)").into() },
+            Action { id: "lower".into(), label: tr("Flacher (−1 Einheit)", "Flatter (−1 unit)").into() },
+            Action { id: "div_x".into(), label: tr("Fach teilen (quer)", "Split compartment (across)").into() },
+            Action {
+                id: "div_y".into(),
+                label: tr("Fach teilen (in die Tiefe)", "Split compartment (front to back)").into(),
+            },
+            Action { id: "div_none".into(), label: tr("Fächer entfernen", "Remove compartments").into() },
+            Action { id: "open_front".into(), label: tr("Vorne offen an/aus", "Open front on/off").into() },
+            Action { id: "holder_none".into(), label: tr("Ablage (Wandbin)", "Tray (wall bin)").into() },
+            Action {
+                id: "holder_wall_holes".into(),
+                label: tr("Halter: Löcher stehend", "Holder: standing holes").into(),
+            },
+            Action {
+                id: "holder_wall_cradles".into(),
+                label: tr("Halter: Wiegen (lehnend)", "Holder: cradles (leaning)").into(),
+            },
+            Action {
+                id: "holder_wall_vslots".into(),
+                label: tr("Halter: V-Schlitze (Zangen)", "Holder: V-slots (pliers)").into(),
+            },
         ];
         let actions = if p.kind == Kind::Wall {
             wall_actions
         } else {
             vec![
-                Action { id: "taller".into(), label: "Höher (+1 Einheit)".into() },
-                Action { id: "lower".into(), label: "Niedriger (−1 Einheit)".into() },
-                Action { id: "div_x".into(), label: "Fach teilen (quer)".into() },
-                Action { id: "div_y".into(), label: "Fach teilen (längs)".into() },
-                Action { id: "div_none".into(), label: "Fächer entfernen".into() },
-                Action { id: "label_tab".into(), label: "Label-Lasche an/aus".into() },
-                Action { id: "scoop".into(), label: "Griffmulde an/aus".into() },
-                Action { id: "lid".into(), label: "Deckel an/aus".into() },
-                Action { id: "open_front".into(), label: "Vorne offen an/aus".into() },
-                Action { id: "fingers".into(), label: "Fingerausschnitte an/aus".into() },
-                Action { id: "window".into(), label: "Fenster vorne an/aus".into() },
-                Action { id: "edges".into(), label: "Rand nutzen an/aus".into() },
-                Action { id: "holder_none".into(), label: "Halter: keiner (normaler Bin)".into() },
-                Action { id: "holder_aa".into(), label: "Halter: AA-Zellen".into() },
-                Action { id: "holder_aaa".into(), label: "Halter: AAA-Zellen".into() },
-                Action { id: "holder_18650".into(), label: "Halter: 18650-Akkus".into() },
-                Action { id: "holder_bits".into(), label: "Halter: 1/4\"-Bits".into() },
-                Action { id: "holder_pens".into(), label: "Halter: Stifte stehend".into() },
-                Action { id: "holder_pens_lying".into(), label: "Halter: Stifte liegend".into() },
-                Action { id: "holder_screwdrivers".into(), label: "Halter: Schraubendreher".into() },
-                Action { id: "holder_tape".into(), label: "Halter: Tape-Rollen".into() },
-                Action { id: "silhouette".into(), label: "Ausschnitt: Silhouette des Modells".into() },
-                Action { id: "cutouts_none".into(), label: "Ausschnitte entfernen".into() },
+                Action { id: "taller".into(), label: tr("Höher (+1 Einheit)", "Taller (+1 unit)").into() },
+                Action { id: "lower".into(), label: tr("Niedriger (−1 Einheit)", "Lower (−1 unit)").into() },
+                Action { id: "div_x".into(), label: tr("Fach teilen (quer)", "Split compartment (across)").into() },
+                Action {
+                    id: "div_y".into(),
+                    label: tr("Fach teilen (längs)", "Split compartment (lengthwise)").into(),
+                },
+                Action { id: "div_none".into(), label: tr("Fächer entfernen", "Remove compartments").into() },
+                Action { id: "label_tab".into(), label: tr("Label-Lasche an/aus", "Label shelf on/off").into() },
+                Action { id: "scoop".into(), label: tr("Griffmulde an/aus", "Scoop on/off").into() },
+                Action { id: "lid".into(), label: tr("Deckel an/aus", "Lid on/off").into() },
+                Action { id: "open_front".into(), label: tr("Vorne offen an/aus", "Open front on/off").into() },
+                Action { id: "fingers".into(), label: tr("Fingerausschnitte an/aus", "Finger notches on/off").into() },
+                Action { id: "window".into(), label: tr("Fenster vorne an/aus", "Front window on/off").into() },
+                Action { id: "edges".into(), label: tr("Rand nutzen an/aus", "Use the margin on/off").into() },
+                Action {
+                    id: "holder_none".into(),
+                    label: tr("Halter: keiner (normaler Bin)", "Holder: none (plain bin)").into(),
+                },
+                Action { id: "holder_aa".into(), label: tr("Halter: AA-Zellen", "Holder: AA cells").into() },
+                Action { id: "holder_aaa".into(), label: tr("Halter: AAA-Zellen", "Holder: AAA cells").into() },
+                Action { id: "holder_18650".into(), label: tr("Halter: 18650-Akkus", "Holder: 18650 cells").into() },
+                Action { id: "holder_bits".into(), label: tr("Halter: 1/4\"-Bits", "Holder: 1/4\" bits").into() },
+                Action {
+                    id: "holder_pens".into(),
+                    label: tr("Halter: Stifte stehend", "Holder: pens standing").into(),
+                },
+                Action {
+                    id: "holder_pens_lying".into(),
+                    label: tr("Halter: Stifte liegend", "Holder: pens lying").into(),
+                },
+                Action {
+                    id: "holder_screwdrivers".into(),
+                    label: tr("Halter: Schraubendreher", "Holder: screwdrivers").into(),
+                },
+                Action { id: "holder_tape".into(), label: tr("Halter: Tape-Rollen", "Holder: tape rolls").into() },
+                Action {
+                    id: "silhouette".into(),
+                    label: tr("Ausschnitt: Silhouette des Modells", "Cutout: outline of the model").into(),
+                },
+                Action { id: "cutouts_none".into(), label: tr("Ausschnitte entfernen", "Remove cutouts").into() },
             ]
         };
         let items = p
@@ -1040,10 +1147,10 @@ impl DrawerPanel {
                     badges.push("↔".into());
                 }
                 if pl.lid {
-                    badges.push("Deckel".into());
+                    badges.push(tr("Deckel", "Lid").into());
                 }
                 if pl.bin.open_front {
-                    badges.push("offen".into());
+                    badges.push(tr("offen", "open").into());
                 }
                 GridItem {
                     id: item_id(pl),
@@ -1087,17 +1194,21 @@ impl DrawerPanel {
                     b.name.clone(),
                     size_text(b.size, 1, "×"),
                     b.quantity.to_string(),
-                    if s.project.bed.fits(b.size[0], b.size[1]) { "✓".into() } else { "zu groß".into() },
+                    if s.project.bed.fits(b.size[0], b.size[1]) {
+                        "✓".into()
+                    } else {
+                        tr("zu groß", "too big").into()
+                    },
                 ],
             })
             .collect();
         Node::Table {
             id: "parts".into(),
             columns: vec![
-                TableColumn { title: "Teil".into(), width: None, numeric: false },
+                TableColumn { title: tr("Teil", "Part").into(), width: None, numeric: false },
                 TableColumn { title: "mm".into(), width: None, numeric: false },
-                TableColumn { title: "Stk.".into(), width: Some(36.0), numeric: true },
-                TableColumn { title: "Bett".into(), width: Some(52.0), numeric: false },
+                TableColumn { title: tr("Stk.", "Qty").into(), width: Some(36.0), numeric: true },
+                TableColumn { title: tr("Bett", "Bed").into(), width: Some(52.0), numeric: false },
             ],
             rows,
             selected: s.selected_part.map(|i| i.to_string()),
@@ -1226,7 +1337,11 @@ impl DrawerPanel {
                 let slots = parse_cradles(&t);
                 if slots.is_empty() {
                     return vec![Effect::Toast {
-                        text: "Keinen Platz erkannt: Breite×Länge=Text, durch Komma".into(),
+                        text: tr(
+                            "Keinen Platz erkannt: Breite×Länge=Text, durch Komma",
+                            "No place recognised: width×length=text, separated by commas",
+                        )
+                        .into(),
                         level: Level::Warn,
                     }];
                 }
@@ -1263,7 +1378,11 @@ impl DrawerPanel {
                 let slots = parse_vslots(&t);
                 if slots.is_empty() {
                     return vec![Effect::Toast {
-                        text: "Keinen Schlitz erkannt: Dicke×Tiefe=Text, durch Komma".into(),
+                        text: tr(
+                            "Keinen Schlitz erkannt: Dicke×Tiefe=Text, durch Komma",
+                            "No slot recognised: thickness×depth=text, separated by commas",
+                        )
+                        .into(),
                         level: Level::Warn,
                     }];
                 }
@@ -1312,7 +1431,11 @@ impl DrawerPanel {
                 let slots = parse_row(&t);
                 if slots.is_empty() {
                     return vec![Effect::Toast {
-                        text: "Keinen Platz erkannt: Ø oder Ø=Text, durch Komma".into(),
+                        text: tr(
+                            "Keinen Platz erkannt: Ø oder Ø=Text, durch Komma",
+                            "No place recognised: Ø or Ø=text, separated by commas",
+                        )
+                        .into(),
                         level: Level::Warn,
                     }];
                 }
@@ -1329,7 +1452,11 @@ impl DrawerPanel {
                 let slots = parse_vslots(&t);
                 if slots.is_empty() {
                     return vec![Effect::Toast {
-                        text: "Keinen Schlitz erkannt: Dicke×Tiefe=Text, durch Komma".into(),
+                        text: tr(
+                            "Keinen Schlitz erkannt: Dicke×Tiefe=Text, durch Komma",
+                            "No slot recognised: thickness×depth=text, separated by commas",
+                        )
+                        .into(),
                         level: Level::Warn,
                     }];
                 }
@@ -1359,7 +1486,11 @@ impl DrawerPanel {
                 let holes = parse_row(&t);
                 if holes.is_empty() {
                     return vec![Effect::Toast {
-                        text: "Keine Größe erkannt: Ø oder Ø=Text, durch Komma".into(),
+                        text: tr(
+                            "Keine Größe erkannt: Ø oder Ø=Text, durch Komma",
+                            "No size recognised: Ø or Ø=text, separated by commas",
+                        )
+                        .into(),
                         level: Level::Warn,
                     }];
                 }
@@ -1404,13 +1535,17 @@ impl DrawerPanel {
         let [w, d] = first.cells();
         let wall = p.kind == Kind::Wall;
         let title = match chosen.len() {
-            1 => format!(
+            1 => tf!(
                 "Fach {w}×{d} in Spalte {}, Reihe {} von {}",
+                "Compartment {w}×{d} in column {}, row {} from the {}",
                 first.x + 1,
                 first.y + 1,
-                if wall { "unten" } else { "vorne" }
+                if wall { tr("unten", "bottom") } else { tr("vorne", "front") }
             ),
-            n => format!("{n} Fächer ausgewählt (Werte des ersten, Änderungen für alle)"),
+            n => tf!(
+                "{n} Fächer ausgewählt (Werte des ersten, Änderungen für alle)",
+                "{n} compartments selected (values of the first, changes for all)"
+            ),
         };
         let int = |id: &str, value: u32, min: u32, max: u32| Node::NumberInput {
             id: id.into(),
@@ -1432,27 +1567,30 @@ impl DrawerPanel {
         let row = |label: &str, node: Node| FormRow { label: label.into(), node };
         let plain = first.holder.is_none();
         let mut rows = vec![row(
-            if wall { "Ausladung" } else { "Höhe" },
+            if wall { tr("Ausladung", "Reach") } else { tr("Höhe", "Height") },
             Node::row(vec![
                 int("sel_units", first.bin.units, 1, p.heights.max.max(1)),
-                small(format!("Einheiten = {:.0} mm", f64::from(first.bin.units) * UNIT)),
+                small(tf!("Einheiten = {:.0} mm", "units = {:.0} mm", f64::from(first.bin.units) * UNIT)),
             ]),
         )];
         if plain && wall {
             rows.push(row(
-                "Fächer quer × in die Tiefe",
+                tr("Fächer quer × in die Tiefe", "Compartments across × front to back"),
                 Node::row(vec![
                     int("sel_div_x", first.bin.dividers[0], 1, 12),
                     int("sel_div_y", first.bin.dividers[1], 1, 12),
                 ]),
             ));
-            rows.push(row("Ausstattung", check("sel_open_front", "vorne offen", first.bin.open_front)));
             rows.push(row(
-                "Gravur",
+                tr("Ausstattung", "Features"),
+                check("sel_open_front", tr("vorne offen", "open front"), first.bin.open_front),
+            ));
+            rows.push(row(
+                tr("Gravur", "Engraving"),
                 Node::TextInput {
                     id: "sel_engrave".into(),
                     value: first.bin.label_text.clone().unwrap_or_default(),
-                    hint: Some("vorne auf der Ablage".into()),
+                    hint: Some(tr("vorne auf der Ablage", "on the front of the tray").into()),
                     multiline: false,
                     enabled: true,
                 },
@@ -1460,7 +1598,7 @@ impl DrawerPanel {
         }
         if plain && !wall {
             rows.push(row(
-                "Fächer quer × längs",
+                tr("Fächer quer × längs", "Compartments across × deep"),
                 Node::row(vec![
                     int("sel_div_x", first.bin.dividers[0], 1, 12),
                     int("sel_div_y", first.bin.dividers[1], 1, 12),
@@ -1468,55 +1606,71 @@ impl DrawerPanel {
             ));
             let side_select = |id: &str, side: Side| Node::Select {
                 id: id.into(),
-                options: [("back", "hinten"), ("front", "vorne"), ("left", "links"), ("right", "rechts")]
-                    .iter()
-                    .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
-                    .collect(),
+                options: [
+                    ("back", tr("hinten", "back")),
+                    ("front", tr("vorne", "front")),
+                    ("left", tr("links", "left")),
+                    ("right", tr("rechts", "right")),
+                ]
+                .iter()
+                .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
+                .collect(),
                 selected: side_value(side).into(),
                 enabled: true,
             };
-            let mut label = vec![check("sel_label_tab", "Label-Lasche", first.bin.label_tab)];
+            let mut label = vec![check("sel_label_tab", tr("Label-Lasche", "Label shelf"), first.bin.label_tab)];
             if first.bin.label_tab {
                 label.push(side_select("sel_label_side", first.bin.label_side));
             }
             rows.push(row("Label", Node::row(label)));
             let scoops = first.bin.scoops();
             rows.push(row(
-                "Griffmulde",
+                tr("Griffmulde", "Scoop"),
                 Node::row(
-                    [(Side::Front, "vorne"), (Side::Back, "hinten"), (Side::Left, "links"), (Side::Right, "rechts")]
-                        .iter()
-                        .map(|(side, l)| check(&format!("sel_scoop_{}", side_value(*side)), l, scoops.contains(side)))
-                        .collect(),
+                    [
+                        (Side::Front, tr("vorne", "front")),
+                        (Side::Back, tr("hinten", "back")),
+                        (Side::Left, tr("links", "left")),
+                        (Side::Right, tr("rechts", "right")),
+                    ]
+                    .iter()
+                    .map(|(side, l)| check(&format!("sel_scoop_{}", side_value(*side)), l, scoops.contains(side)))
+                    .collect(),
                 ),
             ));
             let mut extras = vec![
-                check("sel_lid", "Deckel mitdrucken", first.lid),
-                check("sel_open_front", "vorne offen", first.bin.open_front),
-                check("sel_fingers", "Fingerausschnitte", first.bin.finger_cutouts),
-                check("sel_window", "Fenster vorne", first.bin.window.is_some()),
+                check("sel_lid", tr("Deckel mitdrucken", "Print a lid"), first.lid),
+                check("sel_open_front", tr("vorne offen", "open front"), first.bin.open_front),
+                check("sel_fingers", tr("Fingerausschnitte", "Finger notches"), first.bin.finger_cutouts),
+                check("sel_window", tr("Fenster vorne", "Front window"), first.bin.window.is_some()),
             ];
             if p.grid.zones.contains(&Zone::Edge) {
-                extras.push(check("sel_edges", "Rand nutzen", !first.edges.off.iter().all(|&o| o)));
+                extras.push(check(
+                    "sel_edges",
+                    tr("Rand nutzen", "Use the margin"),
+                    !first.edges.off.iter().all(|&o| o),
+                ));
             }
-            rows.push(row("Ausstattung", Node::row(extras)));
+            rows.push(row(tr("Ausstattung", "Features"), Node::row(extras)));
             if let Some(w) = &first.bin.window {
                 rows.push(row(
-                    "Fenster",
+                    tr("Fenster", "Window"),
                     Node::row(vec![
                         Node::mm("sel_window_w", w.width, 6.0, 200.0),
-                        small("breit".into()),
+                        small(tr("breit", "wide").into()),
                         Node::mm("sel_window_angle", w.angle, 0.0, 45.0),
-                        small("° schräg".into()),
+                        small(tr("° schräg", "° slant").into()),
                     ]),
                 ));
             }
             rows.push(row(
-                "Gravur",
+                tr("Gravur", "Engraving"),
                 Node::TextInput {
                     id: "sel_engrave".into(),
                     value: first.bin.label_text.clone().unwrap_or_default(),
-                    hint: Some("auf der Label-Lasche, sonst vorne".into()),
+                    hint: Some(
+                        tr("auf der Label-Lasche, sonst vorne", "on the label shelf, otherwise the front").into(),
+                    ),
                     multiline: false,
                     enabled: true,
                 },
@@ -1524,38 +1678,43 @@ impl DrawerPanel {
         }
         if chosen.len() == 1 {
             rows.push(row(
-                "Beschriftung",
+                tr("Beschriftung", "Caption"),
                 Node::TextInput {
                     id: "sel_label".into(),
                     value: first.label.clone().unwrap_or_default(),
-                    hint: Some("Name im Plan".into()),
+                    hint: Some(tr("Name im Plan", "Name in the plan").into()),
                     multiline: false,
                     enabled: true,
                 },
             ));
         }
         let holder = holder_id(first);
-        let none = if wall { "keiner (Ablage)" } else { "keiner (normaler Bin)" };
+        let none =
+            if wall { tr("keiner (Ablage)", "none (tray)") } else { tr("keiner (normaler Bin)", "none (plain bin)") };
         let mut options = vec![Choice { value: "none".into(), label: none.into() }];
         options.extend(
             catalog()
                 .iter()
                 .filter(|c| c.holder.is_wall() == wall)
-                .map(|c| Choice { value: c.id.into(), label: c.label.into() }),
+                .map(|c| Choice { value: c.id.into(), label: lang::label(c.id, c.label) }),
         );
         if holder == "custom" {
-            options.push(Choice { value: "custom".into(), label: "eigener Halter".into() });
+            options.push(Choice { value: "custom".into(), label: tr("eigener Halter", "custom holder").into() });
         }
         rows.push(row(
-            "Halter",
+            tr("Halter", "Holder"),
             Node::Select { id: "sel_holder".into(), options, selected: holder.into(), enabled: true },
         ));
         let shape_select = |id: &str, shape: HoleShape| Node::Select {
             id: id.into(),
-            options: [("round", "rund"), ("hex", "Sechskant"), ("square", "quadratisch")]
-                .iter()
-                .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
-                .collect(),
+            options: [
+                ("round", tr("rund", "round")),
+                ("hex", tr("Sechskant", "hex")),
+                ("square", tr("quadratisch", "square")),
+            ]
+            .iter()
+            .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
+            .collect(),
             selected: match shape {
                 HoleShape::Round => "round",
                 HoleShape::Hex => "hex",
@@ -1567,23 +1726,26 @@ impl DrawerPanel {
         match &first.holder {
             Some(HolderSpec::Holes(h)) => {
                 let (dia, height) = h.item.size();
-                rows.push(row("Loch Ø", Node::mm("sel_hole_d", dia, 1.0, 80.0)));
-                rows.push(row("Form", shape_select("sel_hole_shape", h.shape)));
-                rows.push(row("Höhe des Dings", Node::mm("sel_hole_h", height, 5.0, 300.0)));
+                rows.push(row(tr("Loch Ø", "Hole Ø"), Node::mm("sel_hole_d", dia, 1.0, 80.0)));
+                rows.push(row(tr("Form", "Shape"), shape_select("sel_hole_shape", h.shape)));
+                rows.push(row(tr("Höhe des Dings", "Height of the thing"), Node::mm("sel_hole_h", height, 5.0, 300.0)));
                 rows.push(row(
-                    "Tiefe (0 = aus der Höhe)",
+                    tr("Tiefe (0 = aus der Höhe)", "Depth (0 = from the height)"),
                     Node::mm("sel_hole_depth", h.depth.unwrap_or(0.0), 0.0, 200.0),
                 ));
-                rows.push(row("Spiel je Loch", Node::mm("sel_clear", h.clearance, 0.0, 5.0)));
-                rows.push(row("Teilung (0 = eng)", Node::mm("sel_hole_pitch", h.pitch.unwrap_or(0.0), 0.0, 200.0)));
+                rows.push(row(tr("Spiel je Loch", "Clearance per hole"), Node::mm("sel_clear", h.clearance, 0.0, 5.0)));
+                rows.push(row(
+                    tr("Teilung (0 = eng)", "Pitch (0 = tight)"),
+                    Node::mm("sel_hole_pitch", h.pitch.unwrap_or(0.0), 0.0, 200.0),
+                ));
                 let [nx, ny] = h.count.unwrap_or([0, 0]);
                 rows.push(row(
-                    "Anzahl quer × längs (0 = so viele wie passen)",
+                    tr("Anzahl quer × längs (0 = so viele wie passen)", "Count across × deep (0 = as many as fit)"),
                     Node::row(vec![int("sel_hole_nx", nx, 0, 40), int("sel_hole_ny", ny, 0, 40)]),
                 ));
-                rows.push(row("Fase", Node::mm("sel_hole_chamfer", h.chamfer, 0.0, 3.0)));
+                rows.push(row(tr("Fase", "Chamfer"), Node::mm("sel_hole_chamfer", h.chamfer, 0.0, 3.0)));
                 rows.push(row(
-                    "Gravur vorne",
+                    tr("Gravur vorne", "Front engraving"),
                     Node::TextInput {
                         id: "sel_hole_label".into(),
                         value: h.label.clone().unwrap_or_default(),
@@ -1594,31 +1756,32 @@ impl DrawerPanel {
                 ));
             }
             Some(HolderSpec::Row(r)) => {
-                let mut options = vec![Choice { value: String::new(), label: "Satz laden …".into() }];
-                options.extend(sets().iter().map(|s| Choice { value: s.id.into(), label: s.label.into() }));
+                let mut options =
+                    vec![Choice { value: String::new(), label: tr("Satz laden …", "Load a set …").into() }];
+                options.extend(sets().iter().map(|s| Choice { value: s.id.into(), label: lang::label(s.id, s.label) }));
                 rows.push(row(
-                    "Satz",
+                    tr("Satz", "Set"),
                     Node::Select { id: "sel_row_set".into(), options, selected: String::new(), enabled: true },
                 ));
                 rows.push(row(
-                    "Titel (graviert)",
+                    tr("Titel (graviert)", "Title (engraved)"),
                     Node::TextInput {
                         id: "sel_row_title".into(),
                         value: r.title.clone().unwrap_or_default(),
-                        hint: Some("vorne am Halter".into()),
+                        hint: Some(tr("vorne am Halter", "on the front of the holder").into()),
                         multiline: false,
                         enabled: true,
                     },
                 ));
                 rows.push(row(
-                    "Halterung",
+                    tr("Halterung", "Mount"),
                     Node::Select {
                         id: "sel_row_pegs".into(),
                         options: [
-                            ("holes", "Löcher"),
-                            ("quarter", "Stecker 1/4\" (Nüsse)"),
-                            ("three_eighths", "Stecker 3/8\" (Nüsse)"),
-                            ("half", "Stecker 1/2\" (Nüsse)"),
+                            ("holes", tr("Löcher", "Holes")),
+                            ("quarter", tr("Stecker 1/4\" (Nüsse)", "Pegs 1/4\" (sockets)")),
+                            ("three_eighths", tr("Stecker 3/8\" (Nüsse)", "Pegs 3/8\" (sockets)")),
+                            ("half", tr("Stecker 1/2\" (Nüsse)", "Pegs 1/2\" (sockets)")),
                         ]
                         .iter()
                         .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
@@ -1634,134 +1797,192 @@ impl DrawerPanel {
                     },
                 ));
                 if r.pegs.is_none() {
-                    rows.push(row("Form", shape_select("sel_row_shape", r.shape)));
+                    rows.push(row(tr("Form", "Shape"), shape_select("sel_row_shape", r.shape)));
                 }
-                rows.push(row("Spiel je Loch", Node::mm("sel_row_clear", r.clearance, 0.0, 5.0)));
+                rows.push(row(
+                    tr("Spiel je Loch", "Clearance per hole"),
+                    Node::mm("sel_row_clear", r.clearance, 0.0, 5.0),
+                ));
                 if r.pegs.is_none() {
-                    rows.push(row("Neigung nach hinten (°)", Node::mm("sel_row_tilt", r.tilt, 0.0, 30.0)));
+                    rows.push(row(
+                        tr("Neigung nach hinten (°)", "Lean back (°)"),
+                        Node::mm("sel_row_tilt", r.tilt, 0.0, 30.0),
+                    ));
                 }
-                rows.push(row("Stufen", check("sel_row_stepped", "hintere Reihen eine Einheit höher", r.stepped)));
+                rows.push(row(
+                    tr("Stufen", "Steps"),
+                    check(
+                        "sel_row_stepped",
+                        tr("hintere Reihen eine Einheit höher", "rows further back a unit higher"),
+                        r.stepped,
+                    ),
+                ));
                 for (k, holes) in r.rows.iter().enumerate() {
                     rows.push(row(
-                        &format!("Reihe {} (vorne = 1)", k + 1),
+                        &tf!("Reihe {} (vorne = 1)", "Row {} (front = 1)", k + 1),
                         Node::TextInput {
                             id: format!("sel_row_holes:{k}"),
                             value: row_text(holes),
-                            hint: Some("Ø oder Ø=Text, durch Komma getrennt".into()),
+                            hint: Some(
+                                tr("Ø oder Ø=Text, durch Komma getrennt", "Ø or Ø=text, separated by commas").into(),
+                            ),
                             multiline: false,
                             enabled: true,
                         },
                     ));
                 }
                 rows.push(row(
-                    "Reihen",
+                    tr("Reihen", "Rows"),
                     Node::row(vec![
-                        Node::button("sel_row_add", "+ Reihe"),
+                        Node::button("sel_row_add", tr("+ Reihe", "+ row")),
                         Node::Button {
                             id: "sel_row_del".into(),
-                            label: "− Reihe".into(),
+                            label: tr("− Reihe", "− row").into(),
                             primary: false,
                             enabled: r.rows.len() > 1,
                         },
-                        small(format!("{} Löcher, {} × {} Zellen", r.hole_count(), r.cells[0], r.cells[1])),
+                        small(tf!(
+                            "{} Löcher, {} × {} Zellen",
+                            "{} holes, {} × {} cells",
+                            r.hole_count(),
+                            r.cells[0],
+                            r.cells[1]
+                        )),
                     ]),
                 ));
             }
             Some(HolderSpec::Cradles(c)) => {
-                let mut options = vec![Choice { value: String::new(), label: "Satz laden …".into() }];
+                let mut options =
+                    vec![Choice { value: String::new(), label: tr("Satz laden …", "Load a set …").into() }];
                 options.extend(
                     sets()
                         .iter()
                         .filter(|s| matches!(s.holder, HolderSpec::Cradles(_)))
-                        .map(|s| Choice { value: s.id.into(), label: s.label.into() }),
+                        .map(|s| Choice { value: s.id.into(), label: lang::label(s.id, s.label) }),
                 );
                 rows.push(row(
-                    "Satz",
+                    tr("Satz", "Set"),
                     Node::Select { id: "sel_row_set".into(), options, selected: String::new(), enabled: true },
                 ));
                 rows.push(row(
-                    "Titel (graviert)",
+                    tr("Titel (graviert)", "Title (engraved)"),
                     Node::TextInput {
                         id: "sel_cradle_title".into(),
                         value: c.title.clone().unwrap_or_default(),
-                        hint: Some("vorne am Halter".into()),
+                        hint: Some(tr("vorne am Halter", "on the front of the holder").into()),
                         multiline: false,
                         enabled: true,
                     },
                 ));
                 rows.push(row(
-                    "Plätze",
+                    tr("Plätze", "Places"),
                     Node::TextInput {
                         id: "sel_cradle_slots".into(),
                         value: cradle_text(&c.slots),
-                        hint: Some("Breite×Länge=Text je Platz, durch Komma".into()),
+                        hint: Some(
+                            tr(
+                                "Breite×Länge=Text je Platz, durch Komma",
+                                "width×length=text per place, separated by commas",
+                            )
+                            .into(),
+                        ),
                         multiline: false,
                         enabled: true,
                     },
                 ));
-                rows.push(row("Neigung (°)", Node::mm("sel_cradle_angle", c.angle, 0.0, 30.0)));
-                rows.push(row("Spiel", Node::mm("sel_cradle_clear", c.clearance, 0.0, 5.0)));
+                rows.push(row(tr("Neigung (°)", "Slope (°)"), Node::mm("sel_cradle_angle", c.angle, 0.0, 30.0)));
+                rows.push(row(tr("Spiel", "Clearance"), Node::mm("sel_cradle_clear", c.clearance, 0.0, 5.0)));
                 rows.push(row(
-                    "Stufen",
+                    tr("Stufen", "Steps"),
                     Node::row(vec![
-                        check("sel_cradle_stepped", "jeder Platz weiter rechts eine Einheit höher", c.stepped),
-                        small(format!("{} Plätze, {} × {} Zellen", c.slots.len(), c.cells[0], c.cells[1])),
+                        check(
+                            "sel_cradle_stepped",
+                            tr(
+                                "jeder Platz weiter rechts eine Einheit höher",
+                                "each place further right a unit higher",
+                            ),
+                            c.stepped,
+                        ),
+                        small(tf!(
+                            "{} Plätze, {} × {} Zellen",
+                            "{} places, {} × {} cells",
+                            c.slots.len(),
+                            c.cells[0],
+                            c.cells[1]
+                        )),
                     ]),
                 ));
             }
             Some(HolderSpec::VSlots(v)) => {
-                let mut options = vec![Choice { value: String::new(), label: "Satz laden …".into() }];
+                let mut options =
+                    vec![Choice { value: String::new(), label: tr("Satz laden …", "Load a set …").into() }];
                 options.extend(
                     sets()
                         .iter()
                         .filter(|s| matches!(s.holder, HolderSpec::VSlots(_)))
-                        .map(|s| Choice { value: s.id.into(), label: s.label.into() }),
+                        .map(|s| Choice { value: s.id.into(), label: lang::label(s.id, s.label) }),
                 );
                 rows.push(row(
-                    "Satz",
+                    tr("Satz", "Set"),
                     Node::Select { id: "sel_row_set".into(), options, selected: String::new(), enabled: true },
                 ));
                 rows.push(row(
-                    "Titel (graviert)",
+                    tr("Titel (graviert)", "Title (engraved)"),
                     Node::TextInput {
                         id: "sel_vslot_title".into(),
                         value: v.title.clone().unwrap_or_default(),
-                        hint: Some("vorne am Halter".into()),
+                        hint: Some(tr("vorne am Halter", "on the front of the holder").into()),
                         multiline: false,
                         enabled: true,
                     },
                 ));
                 rows.push(row(
-                    "Schlitze",
+                    tr("Schlitze", "Slots"),
                     Node::TextInput {
                         id: "sel_vslot_slots".into(),
                         value: vslot_text(&v.slots),
-                        hint: Some("Dicke×Tiefe=Text je Schlitz, durch Komma".into()),
+                        hint: Some(
+                            tr(
+                                "Dicke×Tiefe=Text je Schlitz, durch Komma",
+                                "thickness×depth=text per slot, separated by commas",
+                            )
+                            .into(),
+                        ),
                         multiline: false,
                         enabled: true,
                     },
                 ));
-                rows.push(row("Spiel", Node::mm("sel_vslot_clear", v.clearance, 0.0, 5.0)));
+                rows.push(row(tr("Spiel", "Clearance"), Node::mm("sel_vslot_clear", v.clearance, 0.0, 5.0)));
                 rows.push(row(
-                    "Form",
+                    tr("Form", "Shape"),
                     Node::row(vec![
-                        check("sel_vslot_closed", "hinten geschlossen", v.closed_end),
-                        check("sel_vslot_ramp", "Rampe (Böden steigen nach hinten)", v.ramp),
-                        small(format!("{} Schlitze, {} × {} Zellen", v.slots.len(), v.cells[0], v.cells[1])),
+                        check("sel_vslot_closed", tr("hinten geschlossen", "closed at the back"), v.closed_end),
+                        check(
+                            "sel_vslot_ramp",
+                            tr("Rampe (Böden steigen nach hinten)", "Ramp (bottoms rise towards the back)"),
+                            v.ramp,
+                        ),
+                        small(tf!(
+                            "{} Schlitze, {} × {} Zellen",
+                            "{} slots, {} × {} cells",
+                            v.slots.len(),
+                            v.cells[0],
+                            v.cells[1]
+                        )),
                     ]),
                 ));
             }
             Some(HolderSpec::Rings(rg)) => {
-                rows.push(row("Ring-Innen-Ø", Node::mm("sel_ring_d", rg.d, 5.0, 200.0)));
-                rows.push(row("Ringhöhe", Node::mm("sel_ring_h", rg.height, 3.0, 100.0)));
-                rows.push(row("Spiel", Node::mm("sel_ring_clear", rg.clearance, 0.0, 5.0)));
+                rows.push(row(tr("Ring-Innen-Ø", "Ring inner Ø"), Node::mm("sel_ring_d", rg.d, 5.0, 200.0)));
+                rows.push(row(tr("Ringhöhe", "Ring height"), Node::mm("sel_ring_h", rg.height, 3.0, 100.0)));
+                rows.push(row(tr("Spiel", "Clearance"), Node::mm("sel_ring_clear", rg.clearance, 0.0, 5.0)));
                 let [nx, ny] = rg.count.unwrap_or([0, 0]);
                 rows.push(row(
-                    "Anzahl quer × längs (0 = so viele wie passen)",
+                    tr("Anzahl quer × längs (0 = so viele wie passen)", "Count across × deep (0 = as many as fit)"),
                     Node::row(vec![int("sel_ring_nx", nx, 0, 20), int("sel_ring_ny", ny, 0, 20)]),
                 ));
                 rows.push(row(
-                    "Gravur vorne",
+                    tr("Gravur vorne", "Front engraving"),
                     Node::TextInput {
                         id: "sel_ring_label".into(),
                         value: rg.label.clone().unwrap_or_default(),
@@ -1772,16 +1993,19 @@ impl DrawerPanel {
                 ));
             }
             Some(HolderSpec::Slots(sl)) => {
-                rows.push(row("Schlitzbreite", Node::mm("sel_slot_w", sl.width, 0.5, 30.0)));
-                rows.push(row("Tiefe", Node::mm("sel_slot_depth", sl.depth, 2.0, 200.0)));
-                rows.push(row("Teilung", Node::mm("sel_slot_pitch", sl.pitch, 1.0, 60.0)));
+                rows.push(row(tr("Schlitzbreite", "Slot width"), Node::mm("sel_slot_w", sl.width, 0.5, 30.0)));
+                rows.push(row(tr("Tiefe", "Depth"), Node::mm("sel_slot_depth", sl.depth, 2.0, 200.0)));
+                rows.push(row(tr("Teilung", "Pitch"), Node::mm("sel_slot_pitch", sl.pitch, 1.0, 60.0)));
                 rows.push(row(
-                    "Länge (0 = ganze Tiefe)",
+                    tr("Länge (0 = ganze Tiefe)", "Length (0 = whole depth)"),
                     Node::mm("sel_slot_len", sl.length.unwrap_or(0.0), 0.0, 400.0),
                 ));
-                rows.push(row("Anzahl (0 = so viele wie passen)", int("sel_slot_n", sl.count.unwrap_or(0), 0, 60)));
                 rows.push(row(
-                    "Gravur vorne",
+                    tr("Anzahl (0 = so viele wie passen)", "Count (0 = as many as fit)"),
+                    int("sel_slot_n", sl.count.unwrap_or(0), 0, 60),
+                ));
+                rows.push(row(
+                    tr("Gravur vorne", "Front engraving"),
                     Node::TextInput {
                         id: "sel_slot_label".into(),
                         value: sl.label.clone().unwrap_or_default(),
@@ -1792,30 +2016,40 @@ impl DrawerPanel {
                 ));
             }
             Some(HolderSpec::Troughs(t)) => {
-                rows.push(row("Durchmesser", Node::mm("sel_trough_d", t.diameter, 2.0, 60.0)));
-                rows.push(row("Länge", Node::mm("sel_trough_len", t.length, 20.0, 600.0)));
-                rows.push(row("Griff Ø (0 = ohne)", Node::mm("sel_handle", t.handle.unwrap_or(0.0), 0.0, 60.0)));
-                rows.push(row("Anzahl (0 = so viele wie passen)", int("sel_trough_n", t.count.unwrap_or(0), 0, 20)));
+                rows.push(row(tr("Durchmesser", "Diameter"), Node::mm("sel_trough_d", t.diameter, 2.0, 60.0)));
+                rows.push(row(tr("Länge", "Length"), Node::mm("sel_trough_len", t.length, 20.0, 600.0)));
+                rows.push(row(
+                    tr("Griff Ø (0 = ohne)", "Handle Ø (0 = none)"),
+                    Node::mm("sel_handle", t.handle.unwrap_or(0.0), 0.0, 60.0),
+                ));
+                rows.push(row(
+                    tr("Anzahl (0 = so viele wie passen)", "Count (0 = as many as fit)"),
+                    int("sel_trough_n", t.count.unwrap_or(0), 0, 20),
+                ));
             }
             Some(HolderSpec::Tape(t)) => {
-                rows.push(row("Rollen-Ø", Node::mm("sel_tape_od", t.od, 30.0, 200.0)));
+                rows.push(row(tr("Rollen-Ø", "Roll Ø"), Node::mm("sel_tape_od", t.od, 30.0, 200.0)));
                 rows.push(row(
-                    "Stapel quer × längs",
+                    tr("Stapel quer × längs", "Stacks across × deep"),
                     Node::row(vec![int("sel_tape_sx", t.stacks[0], 1, 6), int("sel_tape_sy", t.stacks[1], 1, 6)]),
                 ));
-                rows.push(row("Rollen übereinander", int("sel_tape_h", t.height, 1, 10)));
+                rows.push(row(
+                    tr("Rollen übereinander", "Rolls on top of each other"),
+                    int("sel_tape_h", t.height, 1, 10),
+                ));
             }
             Some(h @ (HolderSpec::WallHoles(_) | HolderSpec::WallCradles(_) | HolderSpec::WallVSlots(_))) => {
                 let same = |other: &HolderSpec| std::mem::discriminant(other) == std::mem::discriminant(h);
-                let mut options = vec![Choice { value: String::new(), label: "Satz laden …".into() }];
+                let mut options =
+                    vec![Choice { value: String::new(), label: tr("Satz laden …", "Load a set …").into() }];
                 options.extend(
                     sets()
                         .iter()
                         .filter(|s| same(&s.holder))
-                        .map(|s| Choice { value: s.id.into(), label: s.label.into() }),
+                        .map(|s| Choice { value: s.id.into(), label: lang::label(s.id, s.label) }),
                 );
                 rows.push(row(
-                    "Satz",
+                    tr("Satz", "Set"),
                     Node::Select { id: "sel_row_set".into(), options, selected: String::new(), enabled: true },
                 ));
                 let title = match h {
@@ -1825,72 +2059,127 @@ impl DrawerPanel {
                     _ => None,
                 };
                 rows.push(row(
-                    "Titel (graviert)",
+                    tr("Titel (graviert)", "Title (engraved)"),
                     Node::TextInput {
                         id: "sel_wall_title".into(),
                         value: title.unwrap_or_default(),
-                        hint: Some("auf der Rückwand über den Taschen".into()),
+                        hint: Some(
+                            tr("auf der Rückwand über den Taschen", "on the back plate above the pockets").into(),
+                        ),
                         multiline: false,
                         enabled: true,
                     },
                 ));
                 match h {
                     HolderSpec::WallHoles(x) => {
-                        rows.push(row("Loch Ø", Node::mm("sel_wh_d", x.d, 1.0, 80.0)));
-                        rows.push(row("Form", shape_select("sel_wh_shape", x.shape)));
-                        rows.push(row("Tiefe", Node::mm("sel_wh_depth", x.depth, 3.0, 120.0)));
+                        rows.push(row(tr("Loch Ø", "Hole Ø"), Node::mm("sel_wh_d", x.d, 1.0, 80.0)));
+                        rows.push(row(tr("Form", "Shape"), shape_select("sel_wh_shape", x.shape)));
+                        rows.push(row(tr("Tiefe", "Depth"), Node::mm("sel_wh_depth", x.depth, 3.0, 120.0)));
                         rows.push(row(
-                            "Anzahl quer × Reihen",
+                            tr("Anzahl quer × Reihen", "Count across × rows"),
                             Node::row(vec![int("sel_wh_nx", x.count[0], 1, 40), int("sel_wh_ny", x.count[1], 1, 10)]),
                         ));
-                        rows.push(row("Neigung oben von der Wand weg (°)", Node::mm("sel_wh_tilt", x.tilt, 0.0, 30.0)));
-                        rows.push(row("Spiel je Loch", Node::mm("sel_wh_clear", x.clearance, 0.0, 5.0)));
                         rows.push(row(
-                            "Durchgehend",
-                            check("sel_wh_through", "unten offen (Schraubendreher hängen durch)", x.through),
+                            tr("Neigung oben von der Wand weg (°)", "Top leaning away from the wall (°)"),
+                            Node::mm("sel_wh_tilt", x.tilt, 0.0, 30.0),
+                        ));
+                        rows.push(row(
+                            tr("Spiel je Loch", "Clearance per hole"),
+                            Node::mm("sel_wh_clear", x.clearance, 0.0, 5.0),
+                        ));
+                        rows.push(row(
+                            tr("Durchgehend", "Through"),
+                            check(
+                                "sel_wh_through",
+                                tr(
+                                    "unten offen (Schraubendreher hängen durch)",
+                                    "open below (screwdrivers hang through)",
+                                ),
+                                x.through,
+                            ),
                         ));
                     }
                     HolderSpec::WallCradles(x) => {
                         rows.push(row(
-                            "Plätze",
+                            tr("Plätze", "Places"),
                             Node::TextInput {
                                 id: "sel_wc_slots".into(),
                                 value: row_text(&x.slots),
-                                hint: Some("Ø oder Ø=Text je Platz, durch Komma".into()),
+                                hint: Some(
+                                    tr(
+                                        "Ø oder Ø=Text je Platz, durch Komma",
+                                        "Ø or Ø=text per place, separated by commas",
+                                    )
+                                    .into(),
+                                ),
                                 multiline: false,
                                 enabled: true,
                             },
                         ));
                         let depth = x.slots.first().map_or(20.0, RowHole::depth);
-                        rows.push(row("Tiefe der Fassungen", Node::mm("sel_wc_depth", depth, 3.0, 80.0)));
-                        rows.push(row("Neigung oben zur Wand (°)", Node::mm("sel_wc_angle", x.angle, 0.0, 30.0)));
-                        rows.push(row("Spiel", Node::mm("sel_wc_clear", x.clearance, 0.0, 5.0)));
                         rows.push(row(
-                            "Stufen",
+                            tr("Tiefe der Fassungen", "Socket depth"),
+                            Node::mm("sel_wc_depth", depth, 3.0, 80.0),
+                        ));
+                        rows.push(row(
+                            tr("Neigung oben zur Wand (°)", "Top leaning towards the wall (°)"),
+                            Node::mm("sel_wc_angle", x.angle, 0.0, 30.0),
+                        ));
+                        rows.push(row(tr("Spiel", "Clearance"), Node::mm("sel_wc_clear", x.clearance, 0.0, 5.0)));
+                        rows.push(row(
+                            tr("Stufen", "Steps"),
                             Node::row(vec![
-                                check("sel_wc_stepped", "jeder Platz weiter rechts eine Einheit höher", x.stepped),
-                                small(format!("{} Plätze, {} × {} Zellen", x.slots.len(), x.cells[0], x.cells[1])),
+                                check(
+                                    "sel_wc_stepped",
+                                    tr(
+                                        "jeder Platz weiter rechts eine Einheit höher",
+                                        "each place further right a unit higher",
+                                    ),
+                                    x.stepped,
+                                ),
+                                small(tf!(
+                                    "{} Plätze, {} × {} Zellen",
+                                    "{} places, {} × {} cells",
+                                    x.slots.len(),
+                                    x.cells[0],
+                                    x.cells[1]
+                                )),
                             ]),
                         ));
                     }
                     HolderSpec::WallVSlots(x) => {
                         rows.push(row(
-                            "Schlitze",
+                            tr("Schlitze", "Slots"),
                             Node::TextInput {
                                 id: "sel_wv_slots".into(),
                                 value: vslot_text(&x.slots),
-                                hint: Some("Dicke×Tiefe=Text je Schlitz, durch Komma".into()),
+                                hint: Some(
+                                    tr(
+                                        "Dicke×Tiefe=Text je Schlitz, durch Komma",
+                                        "thickness×depth=text per slot, separated by commas",
+                                    )
+                                    .into(),
+                                ),
                                 multiline: false,
                                 enabled: true,
                             },
                         ));
-                        rows.push(row("Länge aus der Wand", Node::mm("sel_wv_len", x.length, 10.0, 150.0)));
-                        rows.push(row("Spiel", Node::mm("sel_wv_clear", x.clearance, 0.0, 5.0)));
                         rows.push(row(
-                            "Form",
+                            tr("Länge aus der Wand", "Length out of the wall"),
+                            Node::mm("sel_wv_len", x.length, 10.0, 150.0),
+                        ));
+                        rows.push(row(tr("Spiel", "Clearance"), Node::mm("sel_wv_clear", x.clearance, 0.0, 5.0)));
+                        rows.push(row(
+                            tr("Form", "Shape"),
                             Node::row(vec![
-                                check("sel_wv_closed", "vorne geschlossen", x.closed_front),
-                                small(format!("{} Schlitze, {} × {} Zellen", x.slots.len(), x.cells[0], x.cells[1])),
+                                check("sel_wv_closed", tr("vorne geschlossen", "closed at the front"), x.closed_front),
+                                small(tf!(
+                                    "{} Schlitze, {} × {} Zellen",
+                                    "{} slots, {} × {} cells",
+                                    x.slots.len(),
+                                    x.cells[0],
+                                    x.cells[1]
+                                )),
                             ]),
                         ));
                     }
@@ -1901,23 +2190,30 @@ impl DrawerPanel {
         }
         if plain && !wall {
             rows.push(row(
-                "Modell (ID)",
+                tr("Modell (ID)", "Model (ID)"),
                 Node::TextInput {
                     id: "model_id".into(),
                     value: s.model_id.clone(),
-                    hint: Some("Bibliothek/Ordner/datei.stl für die Silhouette".into()),
+                    hint: Some(
+                        tr("Bibliothek/Ordner/datei.stl für die Silhouette", "Library/folder/file.stl for the outline")
+                            .into(),
+                    ),
                     multiline: false,
                     enabled: true,
                 },
             ));
             rows.push(row(
-                "Modell liegt auf",
+                tr("Modell liegt auf", "Model lies on"),
                 Node::Select {
                     id: "model_down".into(),
-                    options: [("z", "Unterseite (z unten)"), ("x", "Seite (x unten)"), ("y", "Seite (y unten)")]
-                        .iter()
-                        .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
-                        .collect(),
+                    options: [
+                        ("z", tr("Unterseite (z unten)", "bottom (z down)")),
+                        ("x", tr("Seite (x unten)", "side (x down)")),
+                        ("y", tr("Seite (y unten)", "side (y down)")),
+                    ]
+                    .iter()
+                    .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
+                    .collect(),
                     selected: match s.model_down {
                         Down::Z => "z",
                         Down::X => "x",
@@ -1929,13 +2225,13 @@ impl DrawerPanel {
             ));
             let n = first.bin.cutouts.len();
             rows.push(row(
-                "Ausschnitte",
+                tr("Ausschnitte", "Cutouts"),
                 Node::row(vec![
-                    small(if n == 0 { "keine".into() } else { n.to_string() }),
-                    Node::button("sel_silhouette", "Silhouette des Modells"),
+                    small(if n == 0 { tr("keine", "none").into() } else { n.to_string() }),
+                    Node::button("sel_silhouette", tr("Silhouette des Modells", "Outline of the model")),
                     Node::Button {
                         id: "sel_cutouts_none".into(),
-                        label: "entfernen".into(),
+                        label: tr("entfernen", "remove").into(),
                         primary: false,
                         enabled: n > 0,
                     },
@@ -1962,14 +2258,20 @@ impl DrawerPanel {
             (s.model_id.trim().to_string(), s.model_down)
         };
         if id.is_empty() {
-            return vec![Effect::Toast { text: "Erst eine Modell-ID eintragen".into(), level: Level::Warn }];
+            return vec![Effect::Toast {
+                text: tr("Erst eine Modell-ID eintragen", "Enter a model ID first").into(),
+                level: Level::Warn,
+            }];
         }
         let mesh = match library::triangles(&id, 50_000) {
             Ok(m) => m,
             Err(e) => return vec![Effect::Toast { text: e, level: Level::Error }],
         };
         let Some((points, height)) = silhouette::outline(&mesh.positions, down) else {
-            return vec![Effect::Toast { text: "Das Modell hat keine Fläche".into(), level: Level::Error }];
+            return vec![Effect::Toast {
+                text: tr("Das Modell hat keine Fläche", "The model has no area").into(),
+                level: Level::Error,
+            }];
         };
         let size = silhouette::size(&points);
         let clearance = 1.0;
@@ -1981,9 +2283,13 @@ impl DrawerPanel {
                 d - 2.0 * bingrove_core::spec::WALL - 2.0 * clearance,
             ];
             if size[0] > inner[0] || size[1] > inner[1] {
-                toast = Some(format!(
+                toast = Some(tf!(
                     "Das Modell ({:.0} × {:.0} mm) passt nicht in den Bin ({:.0} × {:.0} mm innen)",
-                    size[0], size[1], inner[0], inner[1]
+                    "The model ({:.0} × {:.0} mm) does not fit the bin ({:.0} × {:.0} mm inside)",
+                    size[0],
+                    size[1],
+                    inner[0],
+                    inner[1]
                 ));
                 return;
             }
@@ -2003,7 +2309,12 @@ impl DrawerPanel {
         match toast {
             Some(text) => vec![Effect::Toast { text, level: Level::Warn }],
             None => vec![Effect::Toast {
-                text: format!("Silhouette {:.0} × {:.0} mm eingetragen", size[0], size[1]),
+                text: tf!(
+                    "Silhouette {:.0} × {:.0} mm eingetragen",
+                    "Outline {:.0} × {:.0} mm added",
+                    size[0],
+                    size[1]
+                ),
                 level: Level::Success,
             }],
         }
@@ -2168,6 +2479,7 @@ impl GuestPanel for DrawerPanel {
     }
 
     fn render(&self) -> String {
+        lang::set(&guest::info().language);
         if self.plan.borrow().is_none() {
             self.replan();
         }
@@ -2184,23 +2496,25 @@ impl GuestPanel for DrawerPanel {
             Some(Ok(p)) => {
                 let g = &p.grid;
                 let zone = |side: Side| match g.zone(side) {
-                    Zone::Edge => format!("{:.1} mm Randzone", g.margin(side)),
-                    Zone::Solid => format!("{:.1} mm fest", g.margin(side)),
+                    Zone::Edge => tf!("{:.1} mm Randzone", "{:.1} mm edge zone", g.margin(side)),
+                    Zone::Solid => tf!("{:.1} mm fest", "{:.1} mm solid", g.margin(side)),
                 };
                 let text = if p.kind == Kind::Wall {
-                    format!(
+                    tf!(
                         "Wand {} × {} Zellen ({:.0} × {:.0} mm) · {} Plattenteile · {} · {:.0} % belegt",
+                        "Wall {} × {} cells ({:.0} × {:.0} mm) · {} plate pieces · {} · {:.0} % used",
                         g.cells[0],
                         g.cells[1],
                         g.plate[0],
                         g.plate[1],
                         p.pieces.len(),
-                        if p.plate.hooks { "Haken" } else { "nur Magnete" },
+                        if p.plate.hooks { tr("Haken", "hooks") } else { tr("nur Magnete", "magnets only") },
                         p.usable_area()
                     )
                 } else if p.kind == Kind::Surface {
-                    format!(
+                    tf!(
                         "Fläche {} × {} Zellen ({:.0} × {:.0} mm) · {} Plattenteile · {:.0} % belegt",
+                        "Surface {} × {} cells ({:.0} × {:.0} mm) · {} plate pieces · {:.0} % used",
                         g.cells[0],
                         g.cells[1],
                         g.plate[0],
@@ -2209,8 +2523,9 @@ impl GuestPanel for DrawerPanel {
                         p.usable_area()
                     )
                 } else {
-                    format!(
+                    tf!(
                         "Raster {} × {} ({:.0} × {:.0} mm) · L/R {} / {} · V/H {} / {} · {} Plattenteile · {:.0} % nutzbar",
+                        "Grid {} × {} ({:.0} × {:.0} mm) · L/R {} / {} · F/B {} / {} · {} plate pieces · {:.0} % usable",
                         g.cells[0],
                         g.cells[1],
                         g.cells[0] as f64 * GRID,
@@ -2231,19 +2546,19 @@ impl GuestPanel for DrawerPanel {
                 left.push(Node::row(vec![
                     Node::Button {
                         id: "auto".into(),
-                        label: "Automatisch belegen".into(),
+                        label: tr("Automatisch belegen", "Lay out automatically").into(),
                         primary: false,
                         enabled: !s.busy,
                     },
                     Node::Button {
                         id: "generate".into(),
-                        label: "Generieren + Druckliste".into(),
+                        label: tr("Generieren + Druckliste", "Generate + print list").into(),
                         primary: true,
                         enabled: !s.busy,
                     },
                     Node::Button {
                         id: "calibrate".into(),
-                        label: "Kalibrierteile".into(),
+                        label: tr("Kalibrierteile", "Calibration pieces").into(),
                         primary: false,
                         enabled: !s.busy,
                     },
@@ -2252,7 +2567,11 @@ impl GuestPanel for DrawerPanel {
                 match self.selected_form(&s, p) {
                     Some(form) => middle.push(form),
                     None => middle.push(Node::Label {
-                        text: "Ein Fach anklicken, um es hier einzustellen; Rechtsklick für das Menü.".into(),
+                        text: tr(
+                            "Ein Fach anklicken, um es hier einzustellen; Rechtsklick für das Menü.",
+                            "Click a compartment to set it up here; right-click for the menu.",
+                        )
+                        .into(),
                         style: TextStyle::Small,
                     }),
                 }
@@ -2268,19 +2587,19 @@ impl GuestPanel for DrawerPanel {
                     let (fraction, what) = s.preview_progress.clone().unwrap_or_default();
                     right.push(Node::Progress {
                         fraction: Some(fraction),
-                        text: Some(format!("Vorschau wird berechnet … {what}")),
+                        text: Some(tf!("Vorschau wird berechnet … {what}", "Computing the preview … {what}")),
                     });
                 } else if s.preview.is_none() {
                     // Without an event at opening nothing could start the job yet.
                     right.push(Node::Button {
                         id: "preview".into(),
-                        label: "Vorschau berechnen".into(),
+                        label: tr("Vorschau berechnen", "Compute the preview").into(),
                         primary: false,
                         enabled: true,
                     });
                 }
                 right.push(Node::Label {
-                    text: format!("Teile ({} Stück zu drucken)", p.part_count()),
+                    text: tf!("Teile ({} Stück zu drucken)", "Parts ({} pieces to print)", p.part_count()),
                     style: meshgrove_plugin_api::ui::TextStyle::Strong,
                 });
                 right.push(self.parts(&s, p));
@@ -2288,21 +2607,26 @@ impl GuestPanel for DrawerPanel {
                 // a narrow column cuts short.
                 right.push(match s.selected_part.and_then(|i| p.parts.get(i)) {
                     Some(b) => Node::Label {
-                        text: format!(
+                        text: tf!(
                             "{}\n{} mm · {} Stück · {}",
+                            "{}\n{} mm · {} pieces · {}",
                             b.name,
                             size_text(b.size, 2, " × "),
                             b.quantity,
                             if s.project.bed.fits(b.size[0], b.size[1]) {
-                                format!("passt aufs Bett ({})", s.project.bed.name)
+                                tf!("passt aufs Bett ({})", "fits the bed ({})", s.project.bed.name)
                             } else {
-                                format!("zu groß für {}", s.project.bed.name)
+                                tf!("zu groß für {}", "too big for {}", s.project.bed.name)
                             }
                         ),
                         style: TextStyle::Small,
                     },
                     None => Node::Label {
-                        text: "Ein Teil anklicken für Name, Maße und Vorschau auf dem Druckbett.".into(),
+                        text: tr(
+                            "Ein Teil anklicken für Name, Maße und Vorschau auf dem Druckbett.",
+                            "Click a part for its name, size and a preview on the print bed.",
+                        )
+                        .into(),
                         style: TextStyle::Small,
                     },
                 });
@@ -2314,7 +2638,10 @@ impl GuestPanel for DrawerPanel {
             left.push(Node::Notice { level: *level, text: text.clone() });
         }
         if s.busy {
-            left.push(Node::Progress { fraction: None, text: Some("Teile werden berechnet …".into()) });
+            left.push(Node::Progress {
+                fraction: None,
+                text: Some(tr("Teile werden berechnet …", "Computing the parts …").into()),
+            });
         }
         // The form needs about 380 px; a wider first share keeps its labels readable.
         let root = Node::Split {
@@ -2332,6 +2659,7 @@ impl GuestPanel for DrawerPanel {
     }
 
     fn event(&self, event: String) -> String {
+        lang::set(&guest::info().language);
         let Ok(event) = serde_json::from_str::<Event>(&event) else { return guest::effects(&[]) };
         let mut effects = match event {
             Event::Changed { id, value } if id.starts_with("mixn:") => {
@@ -2471,7 +2799,7 @@ impl GuestPanel for DrawerPanel {
                         id: "calibration".into(),
                         kind: "calibration".into(),
                         params,
-                        label: Some("Kalibrierung".into()),
+                        label: Some(tr("Kalibrierung", "Calibration").into()),
                     }],
                 }]
             }
@@ -2552,18 +2880,13 @@ impl GuestPanel for DrawerPanel {
 
 /// What the panel says after a job: the files went to Meshgrove, which decides about them, and
 /// where to look if nothing arrives. Names the setting as Meshgrove's own language does.
-fn handed_over(bundle: &meshgrove_plugin_api::Bundle, language: &str) -> String {
+fn handed_over(bundle: &meshgrove_plugin_api::Bundle) -> String {
     let files = bundle.files.len();
     let lists = bundle.lists.iter().map(|l| l.name.as_str()).collect::<Vec<_>>().join(", ");
-    if language.starts_with("de") {
-        format!(
-            "{files} Dateien und die Listen {lists} an Meshgrove übergeben. Erscheint nichts in der Bibliothek, unter Einstellungen → Plugins → Bingrove „Dateien in die Bibliothek legen“ erlauben."
-        )
-    } else {
-        format!(
-            "{files} files and the lists {lists} handed to Meshgrove. If nothing appears in the library, allow \"Put files into the library\" under Settings → Plugins → Bingrove."
-        )
-    }
+    tf!(
+        "{files} Dateien und die Listen {lists} an Meshgrove übergeben. Erscheint nichts in der Bibliothek, unter Einstellungen → Plugins → Bingrove „Dateien in die Bibliothek legen“ erlauben.",
+        "{files} files and the lists {lists} handed to Meshgrove. If nothing appears in the library, allow \"Put files into the library\" under Settings → Plugins → Bingrove."
+    )
 }
 
 /// A part's size as "41.5×83.5×46.4": up to `decimals` places, trailing zeros dropped.

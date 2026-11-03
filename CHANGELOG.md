@@ -5,6 +5,8 @@ Plugins*. It needs a Meshgrove with the plugin system (0.8.0 or newer).
 
 ## Unreleased
 
+- The panel speaks English too: it follows Meshgrove's language, including the names of holders
+  and sets. File, folder and print list names stay German.
 - Panel: after generating it says the files were handed to Meshgrove, and which setting to
   check if nothing arrives, instead of a success message that also showed when Meshgrove had
   refused them. From Meshgrove 0.8.2 on, the real result replaces that line: in the library,

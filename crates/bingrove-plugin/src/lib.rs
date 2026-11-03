@@ -6,6 +6,7 @@
 //!   "Generieren + Druckliste" runs the export as a job and puts the files into the library.
 //! - Opens `*.gridfinity.json` project files in the panel.
 
+mod lang;
 mod panel;
 mod preview;
 

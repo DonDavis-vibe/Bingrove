@@ -229,7 +229,8 @@ auf ±0,01 mm reproduzieren.
   passen nur Wandteile auf die Platte.
 - Skadis-Haken halten die Platte nur an ihrer Oberkante (die Schlitze liegen 40 mm auseinander,
   das Raster 42 mm).
-- Das Panel spricht Deutsch, die Tools und das englische README Englisch.
+- Das Panel folgt der Sprache von Meshgrove, Deutsch oder Englisch. Datei-, Ordner- und
+  Listennamen bleiben deutsch, damit bestehende Listen weiter passen, ebenso die Kommandozeile.
 
 ## Lizenz
 
