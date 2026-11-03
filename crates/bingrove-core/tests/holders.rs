@@ -190,6 +190,17 @@ fn vslots_tilted_rows_and_rings() {
     let [w, d] = v.cells.map(bin_outer);
     let insert_full = (w - 2.4) * (d - 2.4) * (wrenches.size()[2] - LIP_H - 0.8 - 5.95);
     assert!(mesh.volume() > shell && mesh.volume() < shell + insert_full * 0.9, "{}", mesh.volume());
+    // The slots really go through the insert: at least half of each slot's box comes out.
+    let top = (5.95 + 1.2 + v.max_depth()).min(wrenches.size()[2] - LIP_H - 0.8);
+    let insert = (w - 2.4) * (d - 2.4) * (top - 5.95);
+    let slots: f64 = v.slots.iter().map(|s| s.width * s.depth.min(top - 7.15 - 14.0) / 2.0 * (d - 10.0)).sum();
+    let removed = shell + insert - mesh.volume();
+    assert!(removed > slots, "removed {removed:.0} mm³, slots {slots:.0} mm³");
+    // Nothing reaches through the floor: the solid is closed under the insert.
+    let probe = bingrove_core::geom::kernel::cuboid([w - 10.0, d - 10.0, 0.9], [5.0, 5.0, 5.0]);
+    let floor = &part.solid ^ &probe;
+    let floor_v = (w - 10.0) * (d - 10.0) * 0.9;
+    assert!((floor.volume() - floor_v).abs() < floor_v * 0.01, "floor {:.0} of {floor_v:.0}", floor.volume());
     // Pliers without a ramp, open at the front: still watertight.
     let pliers = holders::holder(&find("pliers"), &p);
     assert!(pliers.mesh().unwrap().is_closed());

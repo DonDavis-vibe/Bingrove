@@ -207,14 +207,17 @@ fn vslots(spec: &VSlotSpec, units: u32, p: &Profile) -> Solid {
     let mut cuts = Vec::new();
     for slot in &spec.slots {
         let width = slot.width + spec.clearance;
-        let depth = slot.depth.min(top - FLOOR_Z - FLOOR);
-        // The slot: a box with a V below it, the whole lying on the ramp.
+        // `depth` reaches the tip of the V; on a ramp the front end goes `rise` deeper, and
+        // nothing goes into the floor.
+        let depth = slot.depth.min(top - FLOOR_Z - FLOOR - rise).max(1.0);
         let v = width / 2.0;
-        let profile: Vec<[f64; 2]> = vec![[0.0, -depth - v], [v, -depth], [v, 50.0], [-v, 50.0], [-v, -depth]];
+        let profile: Vec<[f64; 2]> = vec![[0.0, -depth], [v, -depth + v], [v, 50.0], [-v, 50.0], [-v, -depth + v]];
+        // The prism lies along y from -(y1 - y0) to 0 after the turn; tilting it about x lowers
+        // its front end, so the bottoms rise towards the back.
         let prism = polygon_prism(&profile, 0.0, y1 - y0, 8).rotate(90.0, 0.0, 0.0);
         let tilt = (rise / (y1 - y0)).atan().to_degrees();
         let prism = prism.rotate(tilt, 0.0, 0.0);
-        cuts.push(translate(&prism, [x + v, y0, top]));
+        cuts.push(translate(&prism, [x + v, y1, top]));
         x += width + HOLE_WALL;
     }
     with_pockets(shell(spec.cells, units, p), w, d, top, cuts, p.seg)
