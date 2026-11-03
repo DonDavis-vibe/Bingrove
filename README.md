@@ -83,7 +83,9 @@ from sliding around.
 
 ## As a Meshgrove plugin
 
-Bingrove is a WebAssembly component (`wasm32-wasip2`) that Meshgrove runs in a sandbox.
+Bingrove is a WebAssembly component (`wasm32-wasip2`) that Meshgrove runs in a sandbox. It needs
+a Meshgrove with the plugin system (0.8.0 or newer). Take `bingrove.wasm` from the
+[releases](https://github.com/DonDavis-vibe/Bingrove/releases), or build it:
 
 ```sh
 rustup target add wasm32-wasip2          # once
@@ -159,8 +161,18 @@ reproduce to ±0.01 mm.
 scripts/check.sh    # fmt, clippy (native and wasm), tests, plugin build
 ```
 
-The plugin depends on `meshgrove-plugin-api` from a Meshgrove checkout next to this repository
-until that crate is published.
+The plugin depends on `meshgrove-plugin-api` straight from the Meshgrove repository, pinned to a
+commit; the comment in `crates/bingrove-plugin/Cargo.toml` shows how to point it at a local
+checkout while working on both. `.github/workflows/ci.yml` runs `check.sh`; a tag `v*` builds the
+plugin and publishes it with its checksum and the changelog entry as a GitHub pre-release.
+
+## Known limits
+
+- Presets describe drawers only; a workbench starts from *Art → Fläche* instead.
+- Bins are rectangles; L-shaped bins, wall patterns, lite bins and sliding lids are not there yet.
+- Long holders (a socket set) are not split for the print bed; the plan warns, you split the set.
+- The silhouette of a library model is its convex hull, so a concave outline gets its hollows filled.
+- The panel speaks German; the tools and this file English.
 
 ## Status
 

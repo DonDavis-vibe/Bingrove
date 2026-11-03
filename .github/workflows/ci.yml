@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Format, clippy, tests, plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            crates/bingrove-plugin
+      - name: Everything check.sh checks
+        run: scripts/check.sh
+      - name: Keep the plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: bingrove.wasm
+          path: target/plugin/bingrove.wasm

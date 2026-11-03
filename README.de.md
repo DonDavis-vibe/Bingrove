@@ -86,7 +86,8 @@ nicht rutscht.
 ## Als Meshgrove-Plugin
 
 Bingrove ist eine WebAssembly-Komponente (`wasm32-wasip2`), die Meshgrove in einer Sandbox
-ausführt.
+ausführt. Es braucht ein Meshgrove mit Plugin-System (ab 0.8.0). Die `bingrove.wasm` gibt es
+bei den [Releases](https://github.com/DonDavis-vibe/Bingrove/releases), oder selbst bauen:
 
 ```sh
 rustup target add wasm32-wasip2          # einmalig
@@ -163,8 +164,19 @@ Tests auf ±0,01 mm reproduzieren.
 scripts/check.sh    # fmt, clippy (nativ und wasm), Tests, Plugin-Build
 ```
 
-Das Plugin bezieht `meshgrove-plugin-api` aus einem Meshgrove-Checkout neben diesem Repository,
-bis das Crate veröffentlicht ist.
+Das Plugin bezieht `meshgrove-plugin-api` direkt aus dem Meshgrove-Repository, auf einen Commit
+gepinnt; der Kommentar in `crates/bingrove-plugin/Cargo.toml` zeigt, wie man es für die Arbeit an
+beidem auf einen lokalen Checkout umbiegt. `.github/workflows/ci.yml` fährt `check.sh`; ein Tag
+`v*` baut das Plugin und veröffentlicht es mit Prüfsumme und Changelog-Eintrag als
+GitHub-Pre-Release.
+
+## Bekannte Grenzen
+
+- Presets beschreiben nur Schubladen; eine Werkbank beginnt bei *Art → Fläche*.
+- Bins sind Rechtecke; L-förmige Bins, Wandmuster, Lite-Bins und Schiebedeckel fehlen noch.
+- Lange Halter (ein Nusssatz) werden nicht fürs Druckbett geteilt; der Plan warnt, teilen musst du.
+- Die Silhouette eines Bibliotheksmodells ist seine konvexe Hülle; Einbuchtungen werden aufgefüllt.
+- Das Panel spricht Deutsch, die Tools und das englische README Englisch.
 
 ## Stand
 
