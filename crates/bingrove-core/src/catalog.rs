@@ -4,8 +4,8 @@
 use serde::Serialize;
 
 use crate::model::{
-    BIT_ACROSS_FLATS, BIT_CLEARANCE, CradleSlot, CradleSpec, Drive, HolderSpec, HoleShape, HolesSpec, RoundItem,
-    RowHole, RowSpec, SlotSpec, TroughSpec,
+    BIT_ACROSS_FLATS, BIT_CLEARANCE, CradleSlot, CradleSpec, Drive, HolderSpec, HoleShape, HolesSpec, RingSpec,
+    RoundItem, RowHole, RowSpec, SlotSpec, TroughSpec, VSlot, VSlotSpec,
 };
 use crate::spec::{GRID, WALL, bin_outer};
 
@@ -110,8 +110,34 @@ pub fn capacity(h: &HolderSpec) -> u32 {
         HolderSpec::Row(r) => r.hole_count(),
         HolderSpec::Slots(s) => slot_count(s),
         HolderSpec::Cradles(c) => c.slots.len() as u32,
+        HolderSpec::VSlots(v) => v.slots.len() as u32,
+        HolderSpec::Rings(r) => rings_grid(r).iter().product(),
     }
 }
+
+/// Width and depth the slots of a V-slot holder need inside the bin.
+pub fn vslot_extent(spec: &VSlotSpec) -> [f64; 2] {
+    let width = spec.slots.iter().map(|s| s.width + spec.clearance + HOLE_WALL).sum::<f64>() + HOLE_WALL;
+    [width, 20.0]
+}
+
+pub fn vslot_cells(spec: &VSlotSpec) -> [u32; 2] {
+    let [w, _] = vslot_extent(spec);
+    [cells_needed(w), spec.cells[1].max(1)]
+}
+
+/// Centre distance of the rings of a ring holder.
+pub fn ring_pitch(spec: &RingSpec) -> f64 {
+    spec.d + spec.clearance + 2.0 * RING_WALL + HOLE_WALL
+}
+
+/// Rings across and down for a ring holder of `cells`.
+pub fn rings_grid(spec: &RingSpec) -> [u32; 2] {
+    spec.count.unwrap_or_else(|| spec.cells.map(|c| fit(c, ring_pitch(spec))))
+}
+
+/// Wall of a ring.
+pub const RING_WALL: f64 = 1.6;
 
 /// Width and depth the places of a cradle holder need inside the bin.
 pub fn cradle_extent(spec: &CradleSpec) -> [f64; 2] {
@@ -132,6 +158,7 @@ pub fn cells_for(h: &HolderSpec, count: u32) -> [u32; 2] {
         HolderSpec::Tape(_) => return h.cells(),
         HolderSpec::Row(r) => return row_cells(r),
         HolderSpec::Cradles(c) => return cradle_cells(c),
+        HolderSpec::VSlots(v) => return vslot_cells(v),
         _ => {}
     }
     let mut best: Option<[u32; 2]> = None;
@@ -342,6 +369,86 @@ fn more_sets(socket_sets: &[HolderSet]) -> Vec<HolderSet> {
         id: "ratchets",
         label: "Ratschen (Wiegen, gestuft)",
         holder: cradles(vec![(22.0, 150.0, "1/4"), (30.0, 200.0, "3/8"), (40.0, 250.0, "1/2")], "Ratschen", true),
+        drive: None,
+    });
+    let vslots = |slots: Vec<(f64, f64, &str)>, title: &str, ramp: bool, deep: u32| {
+        let slots =
+            slots.into_iter().map(|(width, depth, label)| VSlot { width, depth, label: label.into() }).collect();
+        let mut spec = VSlotSpec { slots, ramp, title: Some(title.into()), cells: [1, deep], ..VSlotSpec::default() };
+        spec.cells = vslot_cells(&spec);
+        HolderSpec::VSlots(spec)
+    };
+    out.push(HolderSet {
+        id: "pliers",
+        label: "Zangen (V-Schlitze)",
+        holder: vslots(
+            vec![(14.0, 40.0, ""), (16.0, 40.0, ""), (20.0, 45.0, ""), (24.0, 45.0, "")],
+            "Zangen",
+            false,
+            3,
+        ),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "scissors",
+        label: "Scheren und Seitenschneider (V-Schlitze)",
+        holder: vslots(vec![(10.0, 35.0, ""), (10.0, 35.0, ""), (12.0, 35.0, "")], "Scheren", false, 3),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "wrenches",
+        label: "Maulschlüssel 6–24 (Rampe)",
+        holder: vslots(
+            [6.0, 7.0, 8.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 17.0, 19.0, 22.0, 24.0]
+                .iter()
+                .map(|&k| (k * 0.45 + 3.0, 20.0 + k * 0.6, crate::names::mm(k)))
+                .map(|(w, d, l)| (w, d, Box::leak(l.into_boxed_str()) as &str))
+                .collect(),
+            "Maulschluessel",
+            true,
+            4,
+        ),
+        drive: None,
+    });
+    let tilted = |sizes: &[f64], add: f64, depth: f64, title: &str, shape: HoleShape| {
+        let holes =
+            sizes.iter().map(|&s| RowHole { d: s + add, depth: Some(depth), label: crate::names::mm(s) }).collect();
+        let mut spec =
+            RowSpec { rows: vec![holes], shape, tilt: 20.0, title: Some(title.into()), ..RowSpec::default() };
+        spec.cells = row_cells(&spec);
+        HolderSpec::Row(spec)
+    };
+    out.push(HolderSet {
+        id: "hex_keys_tilted",
+        label: "Innensechskant schräg (20°)",
+        holder: tilted(&[1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0], 0.0, 20.0, "Inbus", HoleShape::Hex),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "pens_tilted",
+        label: "Stifte schräg (20°)",
+        holder: tilted(&[12.0, 12.0, 12.0, 12.0, 12.0, 12.0], 1.0, 30.0, "Stifte", HoleShape::Round),
+        drive: None,
+    });
+    let rings = |d: f64, height: f64, label: &str| {
+        HolderSpec::Rings(RingSpec { d, height, label: Some(label.into()), ..RingSpec::default() })
+    };
+    out.push(HolderSet {
+        id: "spray_cans",
+        label: "Spraydosen Ø 66 (Ringe)",
+        holder: rings(66.0, 30.0, "Spray"),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "bottles",
+        label: "Flaschen Ø 30 (Ringe)",
+        holder: rings(30.0, 25.0, "Flaschen"),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "spools",
+        label: "Kabelrollen Ø 90 (Ringe)",
+        holder: rings(90.0, 20.0, "Kabel"),
         drive: None,
     });
     out

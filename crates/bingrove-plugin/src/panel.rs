@@ -5,11 +5,11 @@
 use std::cell::RefCell;
 use std::cmp::Ordering;
 
-use bingrove_core::catalog::{cradle_cells, holes_grid, row_cells, sets};
+use bingrove_core::catalog::{cradle_cells, holes_grid, rings_grid, row_cells, sets, vslot_cells};
 use bingrove_core::grid::Zone;
 use bingrove_core::model::{
     Align, BinSpec, Cover, CradleSlot, Cutout, DrawerProject, Drive, EdgeMode, HolderSpec, HoleShape, Kind, Placement,
-    PlateFloor, RoundItem, RowHole, Side,
+    PlateFloor, RoundItem, RowHole, Side, VSlot,
 };
 use bingrove_core::names::mm;
 use bingrove_core::plan::{PartSpec, Plan, plan};
@@ -113,6 +113,8 @@ fn holder_label(h: &HolderSpec) -> String {
         HolderSpec::Row(r) => r.title.clone().unwrap_or_else(|| format!("{} Löcher", r.hole_count())),
         HolderSpec::Slots(_) => "Schlitze".into(),
         HolderSpec::Cradles(c) => c.title.clone().unwrap_or_else(|| format!("{} Wiegen", c.slots.len())),
+        HolderSpec::VSlots(v) => v.title.clone().unwrap_or_else(|| format!("{} V-Schlitze", v.slots.len())),
+        HolderSpec::Rings(r) => r.label.clone().unwrap_or_else(|| format!("Ringe {}", mm(r.d))),
     }
 }
 
@@ -130,9 +132,16 @@ fn set_holder(p: &mut Placement, id: &str) {
 }
 
 /// The holder fields of the selection form ("sel_" stripped) that carry numbers.
-const HOLDER_FIELDS: [&str; 24] = [
+const HOLDER_FIELDS: [&str; 31] = [
     "cradle_angle",
     "cradle_clear",
+    "row_tilt",
+    "vslot_clear",
+    "ring_d",
+    "ring_h",
+    "ring_nx",
+    "ring_ny",
+    "ring_clear",
     "hole_d",
     "hole_h",
     "clear",
@@ -194,9 +203,46 @@ fn holder_field(p: &mut Placement, field: &str, v: f64) {
         (Some(HolderSpec::Row(r)), "row_clear") => r.clearance = v.clamp(0.0, 5.0),
         (Some(HolderSpec::Cradles(c)), "cradle_angle") => c.angle = v.clamp(0.0, 30.0),
         (Some(HolderSpec::Cradles(c)), "cradle_clear") => c.clearance = v.clamp(0.0, 5.0),
+        (Some(HolderSpec::Row(r)), "row_tilt") => r.tilt = v.clamp(0.0, 30.0),
+        (Some(HolderSpec::VSlots(vs)), "vslot_clear") => vs.clearance = v.clamp(0.0, 5.0),
+        (Some(HolderSpec::Rings(r)), "ring_d") => r.d = v.max(5.0),
+        (Some(HolderSpec::Rings(r)), "ring_h") => r.height = v.max(3.0),
+        (Some(HolderSpec::Rings(r)), "ring_nx" | "ring_ny") => {
+            let mut c = r.count.unwrap_or_else(|| rings_grid(r));
+            c[usize::from(field == "ring_ny")] = whole(v);
+            r.count = (c[0] > 0 && c[1] > 0).then_some(c);
+        }
+        (Some(HolderSpec::Rings(r)), "ring_clear") => r.clearance = v.clamp(0.0, 5.0),
         _ => {}
     }
     refresh_holder(p);
+}
+
+/// "14x40=Zange, 10x35" as V-slots: thickness × depth, with a label after "=".
+fn parse_vslots(text: &str) -> Vec<VSlot> {
+    text.split([',', ';'])
+        .filter_map(|part| {
+            let part = part.trim();
+            let (size, label) = match part.split_once('=') {
+                Some((s, l)) => (s.trim(), l.trim()),
+                None => (part, ""),
+            };
+            let (w, d) = size.split_once(['x', '×'])?;
+            let (width, depth): (f64, f64) = (w.trim().parse().ok()?, d.trim().parse().ok()?);
+            (width > 0.0 && depth > 0.0).then(|| VSlot { width, depth, label: label.to_string() })
+        })
+        .collect()
+}
+
+fn vslot_text(slots: &[VSlot]) -> String {
+    slots
+        .iter()
+        .map(|s| {
+            let size = format!("{}x{}", mm(s.width), mm(s.depth));
+            if s.label.is_empty() { size } else { format!("{size}={}", s.label) }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// "22x150=1/4, 30x200=3/8" as cradle places: width × length, with a label after "=".
@@ -232,6 +278,7 @@ fn refresh_holder(p: &mut Placement) {
     match &mut p.holder {
         Some(HolderSpec::Row(r)) => r.cells = row_cells(r),
         Some(HolderSpec::Cradles(c)) => c.cells = cradle_cells(c),
+        Some(HolderSpec::VSlots(v)) => v.cells = vslot_cells(v),
         _ => {}
     }
     if let Some(h) = &p.holder {
@@ -284,6 +331,8 @@ fn holder_id(p: &Placement) -> &'static str {
             let fallback = match h {
                 HolderSpec::Row(_) => "row",
                 HolderSpec::Cradles(_) => "cradles",
+                HolderSpec::VSlots(_) => "vslots",
+                HolderSpec::Rings(_) => "rings",
                 _ => "custom",
             };
             catalog().into_iter().find(|c| c.holder.clone().with_cells(h.cells()) == *h).map_or(fallback, |c| c.id)
@@ -957,6 +1006,43 @@ impl DrawerPanel {
                     refresh_holder(p);
                 });
             }
+            ("vslot_title", _, _, Some(t)) => self.edit_selected(|p| {
+                if let Some(HolderSpec::VSlots(v)) = &mut p.holder {
+                    v.title = (!t.is_empty()).then(|| t.clone());
+                }
+                refresh_holder(p);
+            }),
+            ("ring_label", _, _, Some(t)) => self.edit_selected(|p| {
+                if let Some(HolderSpec::Rings(r)) = &mut p.holder {
+                    r.label = (!t.is_empty()).then(|| t.clone());
+                }
+                refresh_holder(p);
+            }),
+            ("vslot_closed" | "vslot_ramp", _, Some(on), _) => self.edit_selected(|p| {
+                if let Some(HolderSpec::VSlots(v)) = &mut p.holder {
+                    if field == "vslot_ramp" {
+                        v.ramp = on;
+                    } else {
+                        v.closed_end = on;
+                    }
+                }
+                refresh_holder(p);
+            }),
+            ("vslot_slots", _, _, Some(t)) => {
+                let slots = parse_vslots(&t);
+                if slots.is_empty() {
+                    return vec![Effect::Toast {
+                        text: "Keinen Schlitz erkannt: Dicke×Tiefe=Text, durch Komma".into(),
+                        level: Level::Warn,
+                    }];
+                }
+                self.edit_selected(|p| {
+                    if let Some(HolderSpec::VSlots(v)) = &mut p.holder {
+                        v.slots = slots.clone();
+                    }
+                    refresh_holder(p);
+                });
+            }
             ("row_stepped", _, Some(on), _) => self.edit_selected(|p| {
                 if let Some(HolderSpec::Row(r)) = &mut p.holder {
                     r.stepped = on;
@@ -1185,6 +1271,9 @@ impl DrawerPanel {
                     rows.push(row("Form", shape_select("sel_row_shape", r.shape)));
                 }
                 rows.push(row("Spiel je Loch", Node::mm("sel_row_clear", r.clearance, 0.0, 5.0)));
+                if r.pegs.is_none() {
+                    rows.push(row("Neigung nach hinten (°)", Node::mm("sel_row_tilt", r.tilt, 0.0, 30.0)));
+                }
                 rows.push(row("Stufen", check("sel_row_stepped", "hintere Reihen eine Einheit höher", r.stepped)));
                 for (k, holes) in r.rows.iter().enumerate() {
                     rows.push(row(
@@ -1252,6 +1341,68 @@ impl DrawerPanel {
                         check("sel_cradle_stepped", "jeder Platz weiter rechts eine Einheit höher", c.stepped),
                         small(format!("{} Plätze, {} × {} Zellen", c.slots.len(), c.cells[0], c.cells[1])),
                     ]),
+                ));
+            }
+            Some(HolderSpec::VSlots(v)) => {
+                let mut options = vec![Choice { value: String::new(), label: "Satz laden …".into() }];
+                options.extend(
+                    sets()
+                        .iter()
+                        .filter(|s| matches!(s.holder, HolderSpec::VSlots(_)))
+                        .map(|s| Choice { value: s.id.into(), label: s.label.into() }),
+                );
+                rows.push(row(
+                    "Satz",
+                    Node::Select { id: "sel_row_set".into(), options, selected: String::new(), enabled: true },
+                ));
+                rows.push(row(
+                    "Titel (graviert)",
+                    Node::TextInput {
+                        id: "sel_vslot_title".into(),
+                        value: v.title.clone().unwrap_or_default(),
+                        hint: Some("vorne am Halter".into()),
+                        multiline: false,
+                        enabled: true,
+                    },
+                ));
+                rows.push(row(
+                    "Schlitze",
+                    Node::TextInput {
+                        id: "sel_vslot_slots".into(),
+                        value: vslot_text(&v.slots),
+                        hint: Some("Dicke×Tiefe=Text je Schlitz, durch Komma".into()),
+                        multiline: false,
+                        enabled: true,
+                    },
+                ));
+                rows.push(row("Spiel", Node::mm("sel_vslot_clear", v.clearance, 0.0, 5.0)));
+                rows.push(row(
+                    "Form",
+                    Node::row(vec![
+                        check("sel_vslot_closed", "hinten geschlossen", v.closed_end),
+                        check("sel_vslot_ramp", "Rampe (Böden steigen nach hinten)", v.ramp),
+                        small(format!("{} Schlitze, {} × {} Zellen", v.slots.len(), v.cells[0], v.cells[1])),
+                    ]),
+                ));
+            }
+            Some(HolderSpec::Rings(rg)) => {
+                rows.push(row("Ring-Innen-Ø", Node::mm("sel_ring_d", rg.d, 5.0, 200.0)));
+                rows.push(row("Ringhöhe", Node::mm("sel_ring_h", rg.height, 3.0, 100.0)));
+                rows.push(row("Spiel", Node::mm("sel_ring_clear", rg.clearance, 0.0, 5.0)));
+                let [nx, ny] = rg.count.unwrap_or([0, 0]);
+                rows.push(row(
+                    "Anzahl quer × längs (0 = so viele wie passen)",
+                    Node::row(vec![int("sel_ring_nx", nx, 0, 20), int("sel_ring_ny", ny, 0, 20)]),
+                ));
+                rows.push(row(
+                    "Gravur vorne",
+                    Node::TextInput {
+                        id: "sel_ring_label".into(),
+                        value: rg.label.clone().unwrap_or_default(),
+                        hint: None,
+                        multiline: false,
+                        enabled: true,
+                    },
                 ));
             }
             Some(HolderSpec::Slots(sl)) => {

@@ -175,6 +175,45 @@ fn pegs_and_cradles() {
 }
 
 #[test]
+fn vslots_tilted_rows_and_rings() {
+    use bingrove_core::catalog::sets;
+    let p = Profile::default();
+    let find = |id: &str| sets().into_iter().find(|s| s.id == id).unwrap().holder;
+    // Wrenches on a ramp: watertight, named for the ramp, slots take material out.
+    let wrenches = find("wrenches");
+    let part = holders::holder(&wrenches, &p);
+    assert!(part.name.starts_with("halter_vschlitze_Maulschluessel_rampe_"), "{}", part.name);
+    let mesh = part.mesh().unwrap();
+    assert!(mesh.is_closed(), "{}", part.name);
+    let HolderSpec::VSlots(v) = &wrenches else { panic!() };
+    let shell = plain(v.cells, wrenches.units(), &p);
+    let [w, d] = v.cells.map(bin_outer);
+    let insert_full = (w - 2.4) * (d - 2.4) * (wrenches.size()[2] - LIP_H - 0.8 - 5.95);
+    assert!(mesh.volume() > shell && mesh.volume() < shell + insert_full * 0.9, "{}", mesh.volume());
+    // Pliers without a ramp, open at the front: still watertight.
+    let pliers = holders::holder(&find("pliers"), &p);
+    assert!(pliers.mesh().unwrap().is_closed());
+    // Tilted hex keys: the holes lean back, the mouths stay where upright ones would be.
+    let tilted = find("hex_keys_tilted");
+    let part = holders::holder(&tilted, &p);
+    assert!(part.name.contains("_schraeg_"), "{}", part.name);
+    assert!(part.mesh().unwrap().is_closed());
+    let HolderSpec::Row(r) = &tilted else { panic!() };
+    let upright = HolderSpec::Row(bingrove_core::model::RowSpec { tilt: 0.0, ..r.clone() });
+    let (vt, vu) = (part.mesh().unwrap().volume(), holders::holder(&upright, &p).mesh().unwrap().volume());
+    assert!((vt - vu).abs() < vu * 0.05, "tilting keeps the holes' volume: {vt} vs {vu}");
+    // Rings: a 2 x 2 holder takes one spray can, the shell is as low as the rings.
+    let cans = find("spray_cans");
+    assert_eq!(bingrove_core::catalog::capacity(&cans), 1);
+    let part = holders::holder(&cans, &p);
+    assert_eq!(part.name, "halter_ringe_d66_2x2_6u.stl", "30 mm rings above the floor need six units");
+    let mesh = part.mesh().unwrap();
+    assert!(mesh.is_closed());
+    let HolderSpec::Rings(rg) = &cans else { panic!() };
+    assert!(mesh.volume() > plain(rg.cells, cans.units(), &p), "the ring adds material");
+}
+
+#[test]
 fn engraving_takes_material_and_names_the_part() {
     let p = Profile::default();
     let plain_bin = BinSpec { cells: [2, 1], units: 6, label_tab: true, ..BinSpec::default() };

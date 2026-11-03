@@ -287,6 +287,9 @@ pub struct RowSpec {
     pub shape: HoleShape,
     pub stepped: bool,
     pub pegs: Option<Drive>,
+    /// Holes leaning back by this many degrees (0: upright), for pens, hex keys, tweezers
+    /// that should show their heads to the front.
+    pub tilt: f64,
     /// Air around each thing.
     pub clearance: f64,
     pub cells: [u32; 2],
@@ -302,6 +305,7 @@ impl Default for RowSpec {
             shape: HoleShape::Round,
             stepped: false,
             pegs: None,
+            tilt: 0.0,
             clearance: 1.0,
             cells: [2, 1],
             units: None,
@@ -397,6 +401,84 @@ impl CradleSpec {
     }
 }
 
+/// One slot of a V-slot holder: how thick and how tall the thing standing in it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VSlot {
+    pub width: f64,
+    pub depth: f64,
+    pub label: String,
+}
+
+impl Default for VSlot {
+    fn default() -> Self {
+        VSlot { width: 14.0, depth: 35.0, label: String::new() }
+    }
+}
+
+/// Slots with a V-shaped bottom, side by side along x, for pliers, scissors and wrenches
+/// standing on edge: the V centres things thinner than the slot. `closed_end` keeps the back
+/// wall; `ramp` lets the slot bottoms rise towards the back, so wrenches sorted by size show
+/// their heads in a row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VSlotSpec {
+    pub slots: Vec<VSlot>,
+    pub closed_end: bool,
+    pub ramp: bool,
+    /// Air beside each thing.
+    pub clearance: f64,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+    pub title: Option<String>,
+}
+
+impl Default for VSlotSpec {
+    fn default() -> Self {
+        VSlotSpec {
+            slots: vec![VSlot::default(); 3],
+            closed_end: true,
+            ramp: false,
+            clearance: 1.0,
+            cells: [2, 2],
+            units: None,
+            title: None,
+        }
+    }
+}
+
+impl VSlotSpec {
+    pub fn max_depth(&self) -> f64 {
+        self.slots.iter().map(|s| s.depth).fold(0.0, f64::max) + if self.ramp { RAMP_RISE } else { 0.0 }
+    }
+}
+
+/// How much a ramped V-slot bottom rises from front to back.
+pub const RAMP_RISE: f64 = 14.0;
+
+/// Rings standing on the bin floor for round things to sit in: bottles, spray cans, cable
+/// spools, glue sticks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RingSpec {
+    /// Diameter of the thing.
+    pub d: f64,
+    /// Height of the rings.
+    pub height: f64,
+    /// Rings across and down; as many as fit when absent.
+    pub count: Option<[u32; 2]>,
+    pub clearance: f64,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+    pub label: Option<String>,
+}
+
+impl Default for RingSpec {
+    fn default() -> Self {
+        RingSpec { d: 66.0, height: 25.0, count: None, clearance: 1.0, cells: [2, 2], units: None, label: None }
+    }
+}
+
 /// Parallel slots across the bin for flat things standing on edge: cards, swatches, blades,
 /// coin cells. Slots run along y and are spaced along x.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -478,6 +560,8 @@ pub enum HolderSpec {
     Row(RowSpec),
     Slots(SlotSpec),
     Cradles(CradleSpec),
+    VSlots(VSlotSpec),
+    Rings(RingSpec),
 }
 
 /// Air around hex bits (across flats) and a 1/4" bit's size.
@@ -495,6 +579,8 @@ impl HolderSpec {
             HolderSpec::Row(r) => r.cells,
             HolderSpec::Slots(s) => s.cells,
             HolderSpec::Cradles(c) => c.cells,
+            HolderSpec::VSlots(v) => v.cells,
+            HolderSpec::Rings(r) => r.cells,
         }
     }
 
@@ -508,6 +594,8 @@ impl HolderSpec {
             HolderSpec::Row(r) => r.cells = cells,
             HolderSpec::Slots(s) => s.cells = cells,
             HolderSpec::Cradles(c) => c.cells = cells,
+            HolderSpec::VSlots(v) => v.cells = cells,
+            HolderSpec::Rings(r) => r.cells = cells,
         }
         self
     }
@@ -528,6 +616,9 @@ impl HolderSpec {
             }),
             HolderSpec::Slots(s) => s.units.unwrap_or_else(|| from_depth(s.depth)),
             HolderSpec::Cradles(c) => c.units.unwrap_or_else(|| from_depth(c.max_height())),
+            HolderSpec::VSlots(v) => v.units.unwrap_or_else(|| from_depth(v.max_depth())),
+            // Rings stand on the floor; the shell is as tall as they are.
+            HolderSpec::Rings(r) => r.units.unwrap_or_else(|| from_depth(r.height - 2.0)),
         }
     }
 
@@ -564,7 +655,8 @@ impl HolderSpec {
                 let title = r.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
                 let what = title.unwrap_or_else(|| format!("{}loch", r.hole_count()));
                 let pegs = r.pegs.map(|d| format!("_stecker{}", d.slug())).unwrap_or_default();
-                format!("reihe_{what}{pegs}{}", if r.stepped { "_gestuft" } else { "" })
+                let tilt = if r.tilt > 0.0 { "_schraeg" } else { "" };
+                format!("reihe_{what}{pegs}{tilt}{}", if r.stepped { "_gestuft" } else { "" })
             }
             HolderSpec::Slots(s) => format!("schlitze_{}", crate::names::mm(s.width)),
             HolderSpec::Cradles(c) => {
@@ -572,6 +664,12 @@ impl HolderSpec {
                 let what = title.unwrap_or_else(|| format!("{}", c.slots.len()));
                 format!("wiegen_{what}{}", if c.stepped { "_gestuft" } else { "" })
             }
+            HolderSpec::VSlots(v) => {
+                let title = v.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
+                let what = title.unwrap_or_else(|| format!("{}", v.slots.len()));
+                format!("vschlitze_{what}{}", if v.ramp { "_rampe" } else { "" })
+            }
+            HolderSpec::Rings(r) => format!("ringe_d{}", crate::names::mm(r.d)),
         }
     }
 }

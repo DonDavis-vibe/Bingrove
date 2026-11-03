@@ -3,15 +3,15 @@
 use super::Part;
 use super::bin::edge_bin;
 use super::insert::with_pockets;
-use super::kernel::{Solid, Vec3, cuboid, cylinder, hex_prism, rrect_prism, subtract, translate, union};
+use super::kernel::{Solid, Vec3, cuboid, cylinder, hex_prism, polygon_prism, rrect_prism, subtract, translate, union};
 use super::tape;
 use crate::catalog::{
-    HOLE_WALL, PATTERN_MARGIN, ROW_LABEL_STRIP, across, bit_pitch, bits_grid, hole_pitch, holes_grid, row_pitch,
-    slot_count, trough_count,
+    HOLE_WALL, PATTERN_MARGIN, RING_WALL, ROW_LABEL_STRIP, across, bit_pitch, bits_grid, hole_pitch, holes_grid,
+    ring_pitch, rings_grid, row_pitch, slot_count, trough_count,
 };
 use crate::model::{
     BIT_ACROSS_FLATS, BIT_CLEARANCE, BIT_DEPTH, BinSpec, CradleSpec, EdgeMode, HolderSpec, HoleShape, HolesSpec,
-    RowSpec, SlotSpec, TroughSpec,
+    RAMP_RISE, RingSpec, RowSpec, SlotSpec, TroughSpec, VSlotSpec,
 };
 use crate::profile::Profile;
 use crate::spec::*;
@@ -112,7 +112,9 @@ fn row(spec: &RowSpec, units: u32, p: &Profile) -> Solid {
                 None => {
                     let depth = h.depth().min(top_k - FLOOR_Z - FLOOR);
                     let hole = hole_solid(spec.shape, h.d + spec.clearance, depth, 0.8, p.seg);
-                    cuts.push(translate(&hole, [x + a / 2.0, cy, top_k - depth]));
+                    // A tilted hole leans back about its mouth, so the mouth stays where it is.
+                    let hole = translate(&hole, [0.0, 0.0, -depth]).rotate(-spec.tilt.clamp(0.0, 30.0), 0.0, 0.0);
+                    cuts.push(translate(&hole, [x + a / 2.0, cy, top_k]));
                 }
             }
             // The size in front of its hole, as large as the strip and the hole's width allow.
@@ -192,6 +194,48 @@ fn cradles(spec: &CradleSpec, units: u32, p: &Profile) -> Solid {
     subtract(union(blocks), cuts)
 }
 
+/// V-bottomed slots side by side along x for things standing on edge, open to the front (and
+/// the back unless closed), the bottoms rising towards the back on a ramp.
+fn vslots(spec: &VSlotSpec, units: u32, p: &Profile) -> Solid {
+    let [w, d] = spec.cells.map(bin_outer);
+    let h_body = body_height(units);
+    let top = (FLOOR_Z + FLOOR + spec.max_depth()).min(h_body - DIVIDER_GAP);
+    let total: f64 = spec.slots.iter().map(|s| s.width + spec.clearance + HOLE_WALL).sum::<f64>() + HOLE_WALL;
+    let (y0, y1) = (-1.0, if spec.closed_end { d - WALL - HOLE_WALL } else { d + 1.0 });
+    let rise = if spec.ramp { RAMP_RISE } else { 0.0 };
+    let mut x = w / 2.0 - total / 2.0 + HOLE_WALL;
+    let mut cuts = Vec::new();
+    for slot in &spec.slots {
+        let width = slot.width + spec.clearance;
+        let depth = slot.depth.min(top - FLOOR_Z - FLOOR);
+        // The slot: a box with a V below it, the whole lying on the ramp.
+        let v = width / 2.0;
+        let profile: Vec<[f64; 2]> = vec![[0.0, -depth - v], [v, -depth], [v, 50.0], [-v, 50.0], [-v, -depth]];
+        let prism = polygon_prism(&profile, 0.0, y1 - y0, 8).rotate(90.0, 0.0, 0.0);
+        let tilt = (rise / (y1 - y0)).atan().to_degrees();
+        let prism = prism.rotate(tilt, 0.0, 0.0);
+        cuts.push(translate(&prism, [x + v, y0, top]));
+        x += width + HOLE_WALL;
+    }
+    with_pockets(shell(spec.cells, units, p), w, d, top, cuts, p.seg)
+}
+
+/// Rings standing on the bin floor, as many as fit (or as asked), for round things to sit in.
+fn rings(spec: &RingSpec, units: u32, p: &Profile) -> Solid {
+    let [w, d] = spec.cells.map(bin_outer);
+    let h_body = body_height(units);
+    let height = spec.height.min(h_body - DIVIDER_GAP - FLOOR_Z);
+    let r_in = (spec.d + spec.clearance) / 2.0;
+    let ring = cylinder(height + 0.5, r_in + RING_WALL, r_in + RING_WALL, p.seg)
+        - translate(&cylinder(height + 2.0, r_in, r_in, p.seg), [0.0, 0.0, 1.0]);
+    let parts = centres(w, d, rings_grid(spec), ring_pitch(spec))
+        .into_iter()
+        .map(|(x, y)| translate(&ring, [x, y, FLOOR_Z - 0.5]))
+        .chain(std::iter::once(shell(spec.cells, units, p)))
+        .collect();
+    union(parts)
+}
+
 /// Parallel slots along y, spaced along x, for things standing on edge.
 fn slots(spec: &SlotSpec, units: u32, p: &Profile) -> Solid {
     let [w, d] = spec.cells.map(bin_outer);
@@ -246,6 +290,8 @@ fn front_text(h: &HolderSpec) -> Option<&str> {
         HolderSpec::Slots(s) => s.label.as_deref(),
         HolderSpec::Row(r) => r.title.as_deref(),
         HolderSpec::Cradles(c) => c.title.as_deref(),
+        HolderSpec::VSlots(v) => v.title.as_deref(),
+        HolderSpec::Rings(r) => r.label.as_deref(),
         _ => None,
     }
     .map(str::trim)
@@ -262,6 +308,8 @@ pub fn holder(h: &HolderSpec, p: &Profile) -> Part {
         HolderSpec::Row(r) => row(r, units, p),
         HolderSpec::Slots(s) => slots(s, units, p),
         HolderSpec::Cradles(c) => cradles(c, units, p),
+        HolderSpec::VSlots(v) => vslots(v, units, p),
+        HolderSpec::Rings(r) => rings(r, units, p),
     };
     if let Some(text) = front_text(h) {
         let w = bin_outer(h.cells()[0]);
