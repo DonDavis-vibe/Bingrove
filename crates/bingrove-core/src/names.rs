@@ -7,6 +7,9 @@ use crate::model::{
 
 pub fn baseplate(row: usize, col: usize, cells: [u32; 2], build: PlateBuild) -> String {
     let col = char::from(b'A' + col as u8);
+    if build.wall {
+        return wall_plate(format!("wandplatte_{}{col}_{}x{}", row + 1, cells[0], cells[1]), build);
+    }
     let mut name = format!("baseplate_{}{col}_{}x{}", row + 1, cells[0], cells[1]);
     match build.floor {
         PlateFloor::Open => {}
@@ -26,6 +29,52 @@ pub fn baseplate(row: usize, col: usize, cells: [u32; 2], build: PlateBuild) -> 
         if build.mount.connectors {
             name += "_verbinder";
         }
+    }
+    name + ".stl"
+}
+
+/// A wall plate is always full; what tells them apart is the hooks, magnets and mounting.
+fn wall_plate(mut name: String, build: PlateBuild) -> String {
+    if build.floor == PlateFloor::Magnets {
+        name += "_magnete";
+    }
+    if build.hooks {
+        name += "_haken";
+    }
+    if build.mount.screws {
+        name += "_schrauben";
+    }
+    if build.mount.connectors {
+        name += "_verbinder";
+    }
+    if build.mount.skadis {
+        name += "_skadis";
+    }
+    name + ".stl"
+}
+
+/// A bin hanging on a wall plate: compartments, open front, text, magnets; `_ohne_haken` when
+/// it has no keyholes (a plate without hooks).
+pub fn wall_bin(b: &BinSpec, hooks: bool) -> String {
+    let [gx, gy] = b.cells;
+    let mut name = format!("wandbin_{gx}x{gy}_{}u", b.units);
+    if b.dividers != [1, 1] {
+        name += &format!("_{}x{}fach", b.dividers[0], b.dividers[1]);
+    }
+    if b.open_front {
+        name += "_offen";
+    }
+    if let Some(text) = b.label_text.as_deref().map(slug).filter(|s| !s.is_empty()) {
+        name += &format!("_{text}");
+    }
+    match b.magnets {
+        MagnetMode::None => {}
+        MagnetMode::All => name += "_magnete",
+        MagnetMode::Corners if gx * gy == 1 => name += "_magnete",
+        MagnetMode::Corners => name += "_magnete_ecken",
+    }
+    if !hooks {
+        name += "_ohne_haken";
     }
     name + ".stl"
 }
@@ -172,7 +221,7 @@ mod tests {
             baseplate(1, 0, [5, 3], build(PlateFloor::Magnets, Mount::default())),
             "baseplate_2A_5x3_magnete.stl"
         );
-        let mount = Mount { screws: true, connectors: true };
+        let mount = Mount { screws: true, connectors: true, ..Mount::default() };
         assert_eq!(
             baseplate(0, 0, [5, 3], build(PlateFloor::Solid, mount)),
             "baseplate_1A_5x3_boden_schrauben_verbinder.stl"
@@ -184,6 +233,11 @@ mod tests {
         assert_eq!(bin(&b), "bin_2x1_9u_2x1fach.stl");
         let b = BinSpec { cells: [1, 1], magnets: MagnetMode::Corners, lip: false, ..BinSpec::default() };
         assert_eq!(bin(&b), "bin_1x1_6u_ohne_rand_magnete.stl");
+        let wall = PlateBuild { wall: true, hooks: true, style: PlateStyle::Full, ..build(PlateFloor::Magnets, mount) };
+        assert_eq!(baseplate(0, 0, [8, 6], wall), "wandplatte_1A_8x6_magnete_haken_schrauben_verbinder.stl");
+        let b = BinSpec { cells: [2, 1], units: 6, dividers: [3, 1], open_front: true, ..BinSpec::default() };
+        assert_eq!(wall_bin(&b, true), "wandbin_2x1_6u_3x1fach_offen.stl");
+        assert_eq!(wall_bin(&BinSpec::default(), false), "wandbin_1x1_6u_ohne_haken.stl");
         let t = TapeSpec { od: 103.0, stacks: [2, 1], height: 3, ..TapeSpec::default() };
         assert_eq!(tape(&t), "tape_5x3_2plaetze_3hoch_bis103mm.stl");
         let t = TapeSpec { od: 124.0, stacks: [1, 1], height: 2, ..TapeSpec::default() };

@@ -84,6 +84,14 @@ impl TriMesh {
         self.indices.extend(other.indices.iter().map(|i| i + base));
     }
 
+    /// Stood up on a wall: y (up the wall) becomes z, z (out of the wall) becomes −y.
+    pub fn stood_up(mut self) -> Self {
+        for p in &mut self.positions {
+            *p = [p[0], -p[2], p[1]];
+        }
+        self
+    }
+
     /// The same mesh moved by `v`.
     pub fn translated(mut self, v: [f32; 3]) -> Self {
         for p in &mut self.positions {

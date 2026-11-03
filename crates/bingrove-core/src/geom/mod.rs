@@ -9,6 +9,7 @@ pub mod kernel;
 pub mod lid;
 pub mod tape;
 pub mod text;
+pub mod wall;
 
 use kernel::{GeomError, Solid};
 
@@ -53,6 +54,15 @@ pub fn part(plan: &Plan, index: usize, p: &Profile) -> Part {
         }
         PartSpec::Holder(h) => holders::holder(h, p),
         PartSpec::Lid(l) => lid::lid(l, p),
+        PartSpec::WallBin { spec, hooks } => {
+            let mut spec = spec.clone();
+            if plan.magnets && spec.magnets == crate::model::MagnetMode::None {
+                spec.magnets = crate::model::MagnetMode::Corners;
+            }
+            let mut part = wall::tray(&spec, *hooks, p);
+            part.name = plan.parts[index].name.clone();
+            part
+        }
     }
 }
 
@@ -67,6 +77,9 @@ pub fn assembly_mesh(plan: &Plan, p: &Profile) -> Result<TriMesh, GeomError> {
 /// The assembly from meshes already made: `meshes[i]` is the mesh of `parts[i]`, the plan's
 /// parts in order.
 pub fn assemble(plan: &Plan, parts: &[Part], meshes: &[TriMesh]) -> TriMesh {
+    if plan.kind == crate::model::Kind::Wall {
+        return assemble_wall(plan, parts, meshes);
+    }
     let mut out = TriMesh::default();
     for (i, part) in parts.iter().enumerate() {
         if matches!(plan.parts[i].part, PartSpec::Plate { .. }) {
@@ -81,6 +94,31 @@ pub fn assemble(plan: &Plan, parts: &[Part], meshes: &[TriMesh]) -> TriMesh {
             m = m.turned_180([size[0] as f32, size[1] as f32]);
         }
         out.append(&m.translated([x as f32, y as f32, z as f32]));
+    }
+    out
+}
+
+/// A wall stood up: the plate turned so y runs up, the wall parts (made lying on their bottom
+/// face) only moved there, anything else seated on the plate and turned with it.
+fn assemble_wall(plan: &Plan, parts: &[Part], meshes: &[TriMesh]) -> TriMesh {
+    let mut out = TriMesh::default();
+    for (i, part) in parts.iter().enumerate() {
+        if matches!(plan.parts[i].part, PartSpec::Plate { .. }) {
+            let m = meshes[i].clone().translated([part.origin[0] as f32, part.origin[1] as f32, 0.0]);
+            out.append(&m.stood_up());
+        }
+    }
+    let fl = plan.grid.floor;
+    for placed in &plan.placements {
+        let m = meshes[placed.part].clone();
+        let [x, y, z] = plan.position(placed);
+        let entry = &plan.parts[placed.part];
+        let m = if entry.part.is_wall() {
+            m.translated([x as f32, -(entry.size[1] + fl) as f32, y as f32])
+        } else {
+            m.translated([x as f32, y as f32, z as f32]).stood_up()
+        };
+        out.append(&m);
     }
     out
 }

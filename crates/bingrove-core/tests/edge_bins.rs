@@ -66,7 +66,7 @@ fn a_mounted_surface_assembles_from_its_pieces() {
         options: PlateOptions {
             kind: Kind::Surface,
             floor: PlateFloor::Solid,
-            mount: Mount { screws: true, connectors: true },
+            mount: Mount { screws: true, connectors: true, ..Mount::default() },
             ..PlateOptions::default()
         },
         bed: BedSpec { x: 180.0, y: 180.0, ..BedSpec::default() },

@@ -98,6 +98,19 @@ pub const CONNECTOR_DEPTH: f64 = 4.0;
 pub const CONNECTOR_GAP: f64 = 0.15;
 pub const CONNECTOR_INSET: f64 = 0.4;
 
+/// Wall plates: the hook standing on every cell's pocket floor, in the plate's frame (x across
+/// the cell from its centre, y up the wall from the cell's lower grid line, z out of the wall
+/// from the pocket floor). Its stem runs from `HOOK_Y0` to `HOOK_Y0 + HOOK_STEM`, the finger on top
+/// reaches up to `HOOK_Y0 + HOOK_REACH` and is `HOOK_FINGER` thick; `HOOK_H` tall in all.
+pub const HOOK_W: f64 = 8.0;
+pub const HOOK_Y0: f64 = 7.5;
+pub const HOOK_STEM: f64 = 2.5;
+pub const HOOK_REACH: f64 = 4.5;
+pub const HOOK_FINGER: f64 = 1.2;
+pub const HOOK_H: f64 = 3.0;
+/// How far a wall part is lifted to go in past the hooks; it is that much shorter at the top.
+pub const HOOK_LIFT: f64 = 3.0;
+
 /// Outer size of a bin covering `cells` grid cells along one axis.
 pub fn bin_outer(cells: u32) -> f64 {
     cells as f64 * GRID - (GRID - BIN_SIZE)
@@ -106,4 +119,10 @@ pub fn bin_outer(cells: u32) -> f64 {
 /// Height of a bin body (without lip) for `units` height units.
 pub fn body_height(units: u32) -> f64 {
     units as f64 * UNIT
+}
+
+/// Outer size of a wall part as printed, lying on its bottom face: width, depth out of the wall
+/// (its height in units), height up the wall (`HOOK_LIFT` short of the cells).
+pub fn wall_size(cells: [u32; 2], units: u32) -> [f64; 3] {
+    [bin_outer(cells[0]), body_height(units), bin_outer(cells[1]) - HOOK_LIFT]
 }

@@ -71,7 +71,22 @@ pub fn parts(p: &Profile) -> Vec<Part> {
     }
     out.extend(connector_pair(p));
     out.push(peg_bar(p));
+    out.push(wall_cell(p));
+    out.extend(HOOK_GAPS.iter().map(|&g| super::wall::hook_test(g, p)));
     out
+}
+
+/// Air around the hook tried by the wall test blocks.
+pub const HOOK_GAPS: [f64; 3] = [0.2, 0.3, 0.4];
+
+/// One cell of a wall plate, floor with magnets and the hook, to hang the test blocks on.
+pub fn wall_cell(p: &Profile) -> Part {
+    use crate::model::{Kind, PlateFloor, PlateOptions};
+    let o =
+        PlateOptions { kind: Kind::Wall, floor: PlateFloor::Magnets, cells: Some([1, 1]), ..PlateOptions::default() };
+    let (grid, _) = crate::grid::Grid::new([GRID, GRID], &o, &p.magnet).expect("one cell fits");
+    let claims = crate::plan::EdgeClaims { sides: Default::default(), corners: [false; 4] };
+    Part::new("kalibrierung_wand_zelle.stl".into(), super::baseplate::plate(&grid, &claims, o.build(), p))
 }
 
 /// Undersizes tried by the peg bar, mm below the drive square.

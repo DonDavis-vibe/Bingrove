@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::grid::{Grid, PlanError, Zone};
 use crate::layout::{Repair, repair_cover, validate_cover};
 use crate::model::{
-    BinSpec, Cover, DrawerProject, EdgeMode, HolderSpec, Kind, LidSpec, Mount, Placement, PlateBuild, PlateFloor, Side,
+    BinSpec, Cover, DividerMode, DrawerProject, EdgeMode, HolderSpec, Kind, LidSpec, Mount, Placement, PlateBuild,
+    PlateFloor, Side,
 };
 use crate::solver::{Heights, auto_layout_cover, heights};
 use crate::spec::{BIN_GAP, CONNECTOR_DEPTH, EDGE_GAP, GRID, LIP_H, bin_outer, body_height};
@@ -65,6 +66,18 @@ pub enum PartSpec {
     },
     Holder(HolderSpec),
     Lid(LidSpec),
+    /// A bin hanging on a wall plate, with keyholes for its hooks when `hooks`.
+    WallBin {
+        spec: BinSpec,
+        hooks: bool,
+    },
+}
+
+impl PartSpec {
+    /// Whether the part is made in the wall parts' print frame (lying on its bottom face).
+    pub fn is_wall(&self) -> bool {
+        matches!(self, PartSpec::WallBin { .. })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -198,6 +211,22 @@ fn part_name(part: &PartSpec, pieces: &[PlatePiece], build: PlateBuild) -> Strin
         PartSpec::Bin { spec, extents, edge_mode } => crate::names::edge_bin(spec, *extents, *edge_mode),
         PartSpec::Holder(h) => crate::names::holder(h),
         PartSpec::Lid(l) => crate::names::lid(l),
+        PartSpec::WallBin { spec, hooks } => crate::names::wall_bin(spec, *hooks),
+    }
+}
+
+/// A bin as it hangs on a wall: an open box without lip, shelf, scoop, window or cutouts.
+fn wall_bin(b: &BinSpec) -> BinSpec {
+    BinSpec {
+        lip: false,
+        label_tab: false,
+        scoop: 0,
+        scoop_sides: vec![],
+        finger_cutouts: false,
+        window: None,
+        cutouts: vec![],
+        divider_mode: DividerMode::Equal,
+        ..b.clone()
     }
 }
 
@@ -211,7 +240,7 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
 
     let mut repairs = Vec::new();
     // A surface stays open where nothing is put; a drawer is covered unless asked otherwise.
-    let cover = if o.kind == Kind::Surface { Cover::Partial } else { o.cover };
+    let cover = if o.kind == Kind::Drawer { o.cover } else { Cover::Partial };
     let placements = if project.placements.is_empty() && (cover == Cover::Exact || !project.items.is_empty()) {
         let (p, w) = auto_layout_cover(&grid, &project.items, h, cover);
         warnings.extend(w);
@@ -247,9 +276,9 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
             .unwrap_or_else(|| [vec![1; nx as usize], vec![1; ny as usize]]),
     };
     let mut pieces = plate_pieces(&grid, reach(&grid, &claims), &split);
-    let magnets = o.floor == PlateFloor::Magnets;
     // Screws and connectors need a floor; the connectors' tabs make a piece longer as printed.
     let build = o.build();
+    let magnets = build.floor == PlateFloor::Magnets;
     let mount = build.mount;
     if mount.connectors {
         for piece in &mut pieces {
@@ -272,6 +301,11 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
     for (p, e) in placed {
         let (part, size, turned) = match &p.holder {
             Some(h) => (PartSpec::Holder(h.clone()), h.size(), false),
+            None if o.kind == Kind::Wall => {
+                let spec = wall_bin(&p.bin);
+                let size = crate::spec::wall_size(spec.cells, spec.units);
+                (PartSpec::WallBin { spec, hooks: build.hooks }, size, false)
+            }
             None => {
                 let (ce, turned) = canonical(&p.bin, e);
                 let mode = if ce.iter().any(|&x| x > 0.0) { grid.edge_mode } else { EdgeMode::default() };
@@ -292,7 +326,8 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
         out.push(PlacedPart { placement: p, extents: e, part: index, turned });
     }
     // Lids are parts of their own, one kind per footprint, printed as often as asked for.
-    for p in out.iter().map(|q| &q.placement).filter(|p| p.lid && p.holder.is_none() && p.bin.lip) {
+    let lids = o.kind != Kind::Wall;
+    for p in out.iter().map(|q| &q.placement).filter(|p| lids && p.lid && p.holder.is_none() && p.bin.lip) {
         let lid = LidSpec { cells: p.bin.cells, ..LidSpec::default() };
         let part = PartSpec::Lid(lid.clone());
         match parts.iter_mut().find(|b| b.part == part) {
@@ -329,7 +364,7 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
         placements: out,
         parts,
         magnets,
-        floor: o.floor,
+        floor: build.floor,
         mount,
         plate: build,
         kind: o.kind,

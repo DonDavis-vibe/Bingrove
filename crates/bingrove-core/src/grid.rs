@@ -49,12 +49,12 @@ pub enum PlanError {
 
 impl Grid {
     pub fn new(drawer: [f64; 2], o: &PlateOptions, magnet: &MagnetSpec) -> Result<(Grid, Vec<Warning>), PlanError> {
-        let floor = match o.floor {
+        let floor = match o.build().floor {
             PlateFloor::Open => 0.0,
             PlateFloor::Solid | PlateFloor::Magnets => magnet.h + magnet.floor,
         };
-        if o.kind == Kind::Surface {
-            // The plate is the grid: as many cells as the size holds (or as asked), no margins.
+        if o.kind != Kind::Drawer {
+            // A surface or a wall: the plate is the grid: as many cells as the size holds (or as asked), no margins.
             let fit = drawer.map(|d| (d / GRID + 1e-9).floor().max(0.0) as u32);
             let cells = o.cells.unwrap_or(fit);
             if cells[0] == 0 || cells[1] == 0 {

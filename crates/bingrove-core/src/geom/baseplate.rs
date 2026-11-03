@@ -41,7 +41,7 @@ pub fn plate(grid: &Grid, claims: &EdgeClaims, build: PlateBuild, p: &Profile) -
             }
             for sx in [-1.0, 1.0] {
                 for sy in [-1.0, 1.0] {
-                    let (x, y) = (cx + sx * m.pos, cy + sy * m.pos);
+                    let (x, y) = (cx + sx * m.pos, magnet_y(cy, sy, build, m.pos));
                     if build.floor == PlateFloor::Magnets {
                         cuts.push(translate(&hole, [x, y, fl - m.h]));
                     }
@@ -112,7 +112,20 @@ pub fn plate(grid: &Grid, claims: &EdgeClaims, build: PlateBuild, p: &Profile) -
     }
 
     let outline = translate(&rrect_prism(w, d, CORNER_R, h, seg), [w / 2.0, d / 2.0, 0.0]);
-    subtract(outline, cuts)
+    let solid = subtract(outline, cuts);
+    if !(build.hooks && fl > 0.0) {
+        return solid;
+    }
+    // A wall plate's hooks, one on every pocket floor, at the cell's lower edge.
+    let hook = super::wall::hook();
+    let hooks = (0..nx).flat_map(|i| (0..ny).map(move |j| (i, j)));
+    union(std::iter::once(solid).chain(hooks.map(|(i, j)| translate(&hook, [lx(i) + GRID / 2.0, ly(j), fl]))).collect())
+}
+
+/// Where a magnet sits along y in the cell centred on `cy`: `pos` from the centre, or on a wall
+/// plate where the shorter wall parts have theirs.
+fn magnet_y(cy: f64, sy: f64, build: PlateBuild, pos: f64) -> f64 {
+    if build.wall { cy - GRID / 2.0 + super::wall::WALL_MAGNET_Y[usize::from(sy > 0.0)] } else { cy + sy * pos }
 }
 
 /// The plate cut into `pieces`, each moved to the origin. With a floor, `mount` adds
@@ -131,7 +144,7 @@ pub fn pieces_of(grid: &Grid, claims: &EdgeClaims, pieces: &[PlatePiece], build:
             let cut = cuboid([x1 - x0, y1 - y0, h + 2.0], [x0, y0, -1.0]);
             let mut solid = &whole ^ &cut;
             if mount.screws {
-                solid = subtract(solid, screw_holes(grid, piece, fl, p));
+                solid = subtract(solid, screw_holes(grid, piece, fl, build.wall, p));
             }
             if mount.connectors {
                 let sides = [
@@ -159,11 +172,11 @@ fn pad(p: &Profile) -> f64 {
 }
 
 /// Countersunk screw holes where the piece's four outer corner cells have their outermost
-/// magnet position, through the floor.
-fn screw_holes(grid: &Grid, piece: &PlatePiece, fl: f64, p: &Profile) -> Vec<Solid> {
+/// magnet position (in their middle on a wall plate, clear of the hooks), through the floor.
+fn screw_holes(grid: &Grid, piece: &PlatePiece, fl: f64, wall: bool, p: &Profile) -> Vec<Solid> {
     let [fx, fy] = piece.first;
     let [cx, cy] = piece.cells;
-    let (m_pos, seg) = (p.magnet.pos, p.seg);
+    let (m_pos, seg) = (if wall { 0.0 } else { p.magnet.pos }, p.seg);
     let sink = (SCREW_HEAD - SCREW_D) / 2.0;
     let hole = cylinder(fl + 2.0, SCREW_D / 2.0, SCREW_D / 2.0, seg)
         + translate(&cylinder(sink, SCREW_D / 2.0, SCREW_HEAD / 2.0, seg), [0.0, 0.0, fl + 1.0 - sink])

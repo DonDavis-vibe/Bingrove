@@ -914,6 +914,9 @@ pub enum Kind {
     /// A surface such as a workbench top: the plate is the grid itself, no walls around it,
     /// no margins, and bins stand only where something is put.
     Surface,
+    /// A plate on a wall: the grid itself like a surface, y running up the wall. Parts hang on a
+    /// hook in every cell and are built to be printed lying on their bottom face.
+    Wall,
 }
 
 /// Whether bins have to cover every cell.
@@ -935,6 +938,8 @@ pub struct Mount {
     pub screws: bool,
     /// Dovetail connectors along the cut edges between pieces.
     pub connectors: bool,
+    /// Pockets in the top edge of a wall plate for hooks that hang it on an IKEA Skadis board.
+    pub skadis: bool,
 }
 
 /// What the floor of a plate looks like.
@@ -957,6 +962,10 @@ pub struct PlateBuild {
     pub mount: Mount,
     /// Magnet pockets in the underside of the pads, for steel surfaces and tool carts.
     pub magnets_below: bool,
+    /// A wall plate (always with a full floor).
+    pub wall: bool,
+    /// A hook on every cell's floor that wall parts hang on.
+    pub hooks: bool,
 }
 
 /// How a drawer's plate is laid out.
@@ -981,6 +990,9 @@ pub struct PlateOptions {
     pub cells: Option<[u32; 2]>,
     /// Width of the flat top the plate keeps past the outer grid line in a ToFloor edge zone.
     pub rim: f64,
+    /// A wall plate's hooks (wall parts get the keyholes to hang on them); without them parts
+    /// hold by magnets alone and any bin fits.
+    pub hooks: bool,
 }
 
 impl Default for PlateOptions {
@@ -999,6 +1011,7 @@ impl Default for PlateOptions {
             split: None,
             cells: None,
             rim: 1.0,
+            hooks: true,
         }
     }
 }
@@ -1007,12 +1020,27 @@ impl PlateOptions {
     /// What the plate is built with: an open frame holds neither screws, connectors nor magnets
     /// below.
     pub fn build(&self) -> PlateBuild {
+        if self.kind == Kind::Wall {
+            // A wall plate carries the parts on its floor: always floored and full, never with
+            // magnets below (the wall is behind it).
+            let floor = if self.floor == PlateFloor::Open { PlateFloor::Solid } else { self.floor };
+            return PlateBuild {
+                floor,
+                style: PlateStyle::Full,
+                mount: self.mount,
+                magnets_below: false,
+                wall: true,
+                hooks: self.hooks,
+            };
+        }
         let floored = self.floor != PlateFloor::Open;
         PlateBuild {
             floor: self.floor,
             style: self.style,
-            mount: if floored { self.mount } else { Mount::default() },
+            mount: if floored { Mount { skadis: false, ..self.mount } } else { Mount::default() },
             magnets_below: floored && self.magnets_below,
+            wall: false,
+            hooks: false,
         }
     }
 }

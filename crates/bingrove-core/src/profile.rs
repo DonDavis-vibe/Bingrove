@@ -47,11 +47,19 @@ pub struct Profile {
     pub seg: u32,
     /// How much narrower a socket peg is than the drive square, so the socket slides on.
     pub peg_undersize: f64,
+    /// Air around a wall plate's hook in the keyhole of a wall part's foot.
+    pub hook_gap: f64,
 }
 
 impl Default for Profile {
     fn default() -> Self {
-        Profile { name: "4-mm-Magnete".into(), magnet: MagnetSpec::magnets_4mm(), seg: 64, peg_undersize: 0.3 }
+        Profile {
+            name: "4-mm-Magnete".into(),
+            magnet: MagnetSpec::magnets_4mm(),
+            seg: 64,
+            peg_undersize: 0.3,
+            hook_gap: 0.3,
+        }
     }
 }
 

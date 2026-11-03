@@ -284,8 +284,18 @@ fn cutouts_pocket_the_insert() {
 fn calibration_pieces() {
     let p = Profile::default();
     let parts = calibration::parts(&p);
-    assert_eq!(parts.len(), 8);
+    assert_eq!(parts.len(), 12);
     assert_eq!(parts[7].name, "kalibrierung_stecker.stl");
+    let wall: Vec<_> = parts[8..].iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(
+        wall,
+        [
+            "kalibrierung_wand_zelle.stl",
+            "kalibrierung_wand_haken_0.2.stl",
+            "kalibrierung_wand_haken_0.3.stl",
+            "kalibrierung_wand_haken_0.4.stl"
+        ]
+    );
     let names: Vec<_> = parts.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(names[0], "kalibrierung_magnete_3.9-4.5.stl");
     assert_eq!(

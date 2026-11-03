@@ -163,7 +163,15 @@ pub fn export(
             }
         }
     }
-    if opts.assembly {
+    if opts.assembly && plan.kind == crate::model::Kind::Wall {
+        // A wall stands up, which turns about x; the assembly goes in as one mesh.
+        let mesh = crate::geom::assemble(plan, &parts, &meshes);
+        let whole = [threemf::Object { name: &plan.name, mesh: &mesh }];
+        let item = threemf::Item { object: 0, quarter_turns: 0, at: [0.0; 3] };
+        let name = format!("{slug}_zusammenbau.3mf");
+        std::fs::write(out.join(&name), threemf::write(&format!("{} – Zusammenbau", plan.name), &whole, &[item])?)?;
+        files.push(ExportedFile { path: name, kind: FileKind::Assembly, quantity: 0 });
+    } else if opts.assembly {
         let mut items = Vec::new();
         // Pieces were moved to the origin by their own minimum corner; put them back.
         for (i, part) in parts.iter().enumerate() {
