@@ -76,9 +76,18 @@ nicht rutscht.
   frei, wo nichts steht; mit festem Boden (skelettiert oder voll), gesenkten
   M4-Schraublöchern, Schwalbenschwanz-Verbindern zwischen den Teilen und Magnettaschen von
   unten für Blechflächen.
+- **Wände**: eine Platte an der Wand mit einem Haken in jeder Zelle. Wandteile sind oben 3 mm
+  kürzer: Sie kommen angehoben in die Zellen, rutschen auf die Haken und lassen sich erst nach
+  dem Anheben wieder abnehmen; Magnete helfen. Wandbins (offene Kisten mit Fächern, offener
+  Front, Gravur), **stehende Löcher** (oben von der Wand weg geneigt oder unten offen, damit
+  Schraubendreher durchhängen), **gestufte Fassungen**, in denen Verlängerungen an der Wand
+  lehnen, und **V-Schlitze** für Zangen mit den Backen nach unten, alle mit Sätzen. Die Platte
+  wird angeschraubt (Löcher in der Mitte der Eckzellen) oder mit gedruckten Haken, die in ihre
+  Oberkante geschoben werden, an eine **IKEA-Skadis**-Lochplatte gehängt.
 - **Kalibrierteile**: eine Magnetloch-Leiter mit eingravierten Durchmessern, ein Passungstest
-  mit drei Bins unterschiedlicher Luft, ein Verbinder-Paar und ein Riegel mit Nuss-Steckern, um
-  einen Drucker einzustellen.
+  mit drei Bins unterschiedlicher Luft, ein Verbinder-Paar, ein Riegel mit Nuss-Steckern und eine
+  Wandplatten-Zelle mit drei Klötzen unterschiedlicher Luft um den Haken, um einen Drucker
+  einzustellen.
 - **Ausgabe**: eine STL je Teileart mit Stückzahl, 3MF-Dateien mit den Teilen pro Druckbett
   angeordnet, der Zusammenbau als 3MF zum Anschauen und eine `*.gridfinity.json`-Projektdatei,
   die die Schublade wieder öffnet.
@@ -97,7 +106,7 @@ scripts/install-into-meshgrove.sh        # kopiert es in Meshgroves Plugin-Ordne
 
 In Meshgrove: *Einstellungen → Plugins* – installieren, „AI-Tools“ und „Dateien in die
 Bibliothek legen“ freigeben – dann *Plugins ▾ → Bingrove*. Das Panel hat links drei Reiter
-(*Projekt*: Art, Maße, Ränder, Platte; *Belegung*: Fächer; *Ausgabe*: Drucker, Drucklisten,
+(*Projekt*: Art (Schublade, Fläche oder Wand), Maße, Ränder, Platte; *Belegung*: Fächer; *Ausgabe*: Drucker, Drucklisten,
 Magnetprofil), in der Mitte den Plan als Raster-Editor (verschieben, Größe ändern,
 zusammenlegen, teilen, auf freien Zellen neue Bins aufziehen), rechts 3D-Vorschau und
 Teileliste. Ein Klick auf ein Fach öffnet darunter seine Einstellungen: Höhe, Fächer,
@@ -124,7 +133,9 @@ Studio …) sehen drei Tools:
 Aus *„Schublade 250 × 305 × 100 mm: Stifte, hinten zwei Kabelbins, ein Bitsatz 60 × 35 × 25 mm,
 sechs 18650-Zellen“* wird ein Plan und dann ein Vorschlag, den der Nutzer in Meshgrove annimmt.
 *„Eine Werkbankplatte 600 × 300 mm mit einem 1/4"-Nusssatz und einer Reihe 8-mm-Fräser“* ist
-`kind: surface` mit `set: sockets_1_4_mm` und einem `holes`-Halter. Fotos laufen über den
+`kind: surface` mit `set: sockets_1_4_mm` und einem `holes`-Halter. *„Eine Wand mit 8 × 6
+Zellen für meine Verlängerungen, Zangen und zwei Ablagen“* ist `kind: wall` mit den Sätzen
+`wall_extensions` und `wall_pliers` und zwei Bins. Fotos laufen über den
 AI-Client: Er liest die Maße aus dem Bild und übergibt Zahlen.
 
 ## Von der Kommandozeile
@@ -172,7 +183,12 @@ GitHub-Pre-Release.
 
 ## Bekannte Grenzen
 
-- Presets beschreiben nur Schubladen; eine Werkbank beginnt bei *Art → Fläche*.
+- Presets beschreiben nur Schubladen; eine Werkbank beginnt bei *Art → Fläche*, eine Wand bei
+  *Art → Wand*.
+- Wandteile drucken auf ihrer Unterseite liegend, runde Löcher werden daher leicht oval; mit
+  Haken passen nur Wandteile auf die Platte (ohne Haken hält jeder Bin über Magnete).
+- Skadis-Haken hängen die Platte nur an ihrer Oberkante auf; die Schlitze liegen 40 mm
+  auseinander, das Raster 42 mm.
 - Bins sind Rechtecke; L-förmige Bins, Wandmuster, Lite-Bins und Schiebedeckel fehlen noch.
 - Lange Halter (ein Nusssatz) werden nicht fürs Druckbett geteilt; der Plan warnt, teilen musst du.
 - Die Silhouette eines Bibliotheksmodells ist seine konvexe Hülle; Einbuchtungen werden aufgefüllt.
@@ -182,7 +198,8 @@ GitHub-Pre-Release.
 
 Funktioniert: Planung, Randbins, Fächer-Vorschläge, Halter mit eigenen Maßen und Sätzen
 (Löcher, Stecker, Reihen, Wiegen, V-Schlitze, Schlitze, Ringe, Rinnen, Tape), Bin-Ausstattung
-und Deckel, Gravur, Flächen mit Schrauben, Verbindern und Magneten von unten, Ausschnitte (auch
+und Deckel, Gravur, Flächen mit Schrauben, Verbindern und Magneten von unten, Wände mit Haken,
+Wandhaltern und Skadis-Haken, Ausschnitte (auch
 die Silhouette eines Bibliotheksmodells), Kalibrierung, STL/3MF/Projekt-Export, CLI,
 Plugin-Tools und -Panel. Kommt: Koffer mit Deckel, unregelmäßige (L-förmige) Bins, Wandmuster
 und Lite-Bins, Schiebedeckel, Halbraster, ein Browser-Build, konkave Silhouetten.

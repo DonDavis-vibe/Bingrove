@@ -3,6 +3,31 @@
 Bingrove is a Meshgrove plugin: a release is one `bingrove.wasm`, installed under *Settings →
 Plugins*. It needs a Meshgrove with the plugin system (0.8.0 or newer).
 
+## 0.4.0 – 2026-11-03
+
+Walls.
+
+- Kind **wall**: a plate on the wall with a hook on every cell's floor, magnets where the wall
+  parts have theirs, screw holes in the middle of the corner cells. Wall parts are 3 mm shorter
+  at the top, go in lifted and slide down onto the hooks, which then keep them from being pulled
+  straight off; without hooks they hold by magnets and any bin fits.
+- Wall parts, made lying on their bottom face: **wall bins** (open boxes, compartments, open
+  front, text), **standing holes** (leaning, or open below for screwdrivers hanging through),
+  **stepped sockets** for extension bars leaning against the wall, **V-slots** for pliers
+  standing jaws down. Sets: extensions 1/4", 3/8", 1/2" and all, hex keys, screwdrivers, pens,
+  pliers, scissors, wrenches 6–24.
+- **IKEA Skadis**: pockets in the plate's top edge and printed hooks that slide in from behind.
+- The assembly stands up in the preview and in the 3MF; calibration adds a wall plate cell and
+  blocks with 0.2/0.3/0.4 mm around the hook (profile `hook_gap`).
+- Panel: *Art → Wand* with cells across and up, the reach out of the wall, hooks, screws,
+  connectors and Skadis; wall bins and holders get their own fields. Tools: `kind: wall`,
+  `hooks`, `mount.skadis`, holders `wall_holes`, `wall_cradles`, `wall_vslots`.
+- Parts table: the picked part's whole name and exact size underneath.
+- Fixed: V-slot holders came out as a nearly solid block (the slots were cut in front of
+  them); the dovetail connectors between plate pieces could not be put together (tabs now stand
+  on the build plate and pockets open below); the tools' `vslots` was not accepted (`v_slots`
+  still is).
+
 ## 0.3.0 – 2026-11-03
 
 More holders, more bin features, lids, plate options.

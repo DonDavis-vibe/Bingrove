@@ -74,9 +74,17 @@ from sliding around.
 - **Surfaces**: a plate for a workbench or desk that is the grid itself, cells left free where
   nothing stands, with a solid floor (skeleton or full), countersunk M4 screw holes, dovetail
   connectors between the pieces and magnet pockets underneath for steel surfaces.
+- **Walls**: a plate on the wall with a hook in every cell. Wall parts are 3 mm shorter at the
+  top: they go into the cells lifted, slide down onto the hooks and cannot be pulled straight
+  off until they are lifted again; magnets help. Wall bins (open boxes with compartments, an
+  open front, text), **standing holes** (leaning away from the wall, or open below so
+  screwdrivers hang through), **stepped sockets** in which extension bars lean against the wall,
+  and **V-slots** for pliers standing jaws down, with sets for all of them. The plate is screwed
+  on (holes in the middle of the corner cells) or hung on an **IKEA Skadis** board with printed
+  hooks that slide into its top edge.
 - **Calibration pieces**: a magnet-hole ladder labelled with its diameters, a fit test with
-  three bins of different clearance, a connector pair and a bar of socket pegs, to dial in a
-  printer.
+  three bins of different clearance, a connector pair, a bar of socket pegs, and a wall plate
+  cell with three blocks of different air around the hook, to dial in a printer.
 - **Output**: one STL per distinct part with quantities, 3MF files with the parts arranged per
   print bed, the assembled drawer as 3MF to look at, and a `*.gridfinity.json` project file that
   reopens the drawer.
@@ -94,7 +102,8 @@ scripts/install-into-meshgrove.sh        # copies it into Meshgrove's plugin fol
 ```
 
 In Meshgrove: *Settings → Plugins* — install, grant "AI tools" and "files into the library" —
-then *Plugins ▾ → Bingrove*. The panel has three tabs on the left (*Projekt*: kind, sizes,
+then *Plugins ▾ → Bingrove*. The panel has three tabs on the left (*Projekt*: kind (drawer,
+surface or wall), sizes,
 margins, plate; *Belegung*: compartments; *Ausgabe*: printer, print lists, magnet profile),
 the plan as a grid editor in the middle (move, resize, merge, split, draw new bins on free
 cells), and the 3D preview with the parts list on the right. A click on a bin opens its
@@ -121,7 +130,9 @@ Studio …) see three tools:
 A request like *"250 × 305 × 100 mm drawer: pens, two cable bins at the back, a 60 × 35 × 25 mm
 bit set, six 18650 cells"* becomes a plan, then a suggestion the user accepts in Meshgrove.
 *"A 600 × 300 mm bench plate with a 1/4" socket set and a row of 8 mm router bits"* is
-`kind: surface` with `set: sockets_1_4_mm` and a `holes` holder. Photos work through the AI
+`kind: surface` with `set: sockets_1_4_mm` and a `holes` holder. *"A wall of 8 × 6 cells with my
+extension bars, pliers and two trays"* is `kind: wall` with the sets `wall_extensions` and
+`wall_pliers` and two bins. Photos work through the AI
 client: it reads the sizes off the picture and passes numbers.
 
 ## From the command line
@@ -168,7 +179,10 @@ plugin and publishes it with its checksum and the changelog entry as a GitHub pr
 
 ## Known limits
 
-- Presets describe drawers only; a workbench starts from *Art → Fläche* instead.
+- Presets describe drawers only; a workbench starts from *Art → Fläche*, a wall from *Art → Wand*.
+- Wall parts print lying on their bottom face, so round holes come out slightly oval; with hooks
+  on the plate only wall parts fit it (switch the hooks off and any bin holds by magnets).
+- Skadis hooks hang the plate by its top edge only; its slots are 40 mm apart, the grid 42 mm.
 - Bins are rectangles; L-shaped bins, wall patterns, lite bins and sliding lids are not there yet.
 - Long holders (a socket set) are not split for the print bed; the plan warns, you split the set.
 - The silhouette of a library model is its convex hull, so a concave outline gets its hollows filled.
@@ -178,7 +192,8 @@ plugin and publishes it with its checksum and the changelog entry as a GitHub pr
 
 Working: planning, edge bins, compartment suggestions, holders with their own sizes and sets
 (holes, pegs, rows, cradles, V-slots, slots, rings, troughs, tape), bin features and lids,
-engraving, surfaces with screws, connectors and magnets below, cutouts (including the
+engraving, surfaces with screws, connectors and magnets below, walls with hooks, wall holders
+and Skadis hooks, cutouts (including the
 silhouette of a library model), calibration, STL/3MF/project export, CLI, plugin tools and
 panel. Coming: a case with a lid, irregular (L-shaped) bins, wall patterns and lite bins,
 sliding lids, half-grid, a browser build, concave silhouettes.
