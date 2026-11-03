@@ -360,3 +360,43 @@ fn vslot_holders_read_both_spellings() {
     let h = HolderSpec::VSlots(Default::default());
     assert!(serde_json::to_string(&h).unwrap().contains(r#""kind":"vslots""#));
 }
+
+#[test]
+fn skadis_hooks_slide_in_from_behind_and_carry_the_plate() {
+    use bingrove_core::model::Mount;
+    use bingrove_core::spec::skadis_hook_size;
+    let p = Profile { seg: 24, ..Profile::default() };
+    let mut project = wall_project(true, vec![]);
+    project.drawer.width = 4.0 * 42.0;
+    project.drawer.depth = 2.0 * 42.0;
+    project.options.mount = Mount { skadis: true, ..Mount::default() };
+    let plan = plan(&project).unwrap();
+    assert_eq!(plan.parts[0].name, "wandplatte_1A_4x2_magnete_haken_skadis.stl");
+    let hooks = plan.parts.iter().find(|e| matches!(e.part, PartSpec::SkadisHook)).unwrap();
+    assert_eq!(hooks.name, "skadis_haken.stl");
+    assert_eq!(hooks.quantity, 2, "168 mm takes a pair of hooks");
+    let parts = all_parts(&plan, &p);
+    let hook = parts.iter().find(|part| part.name == "skadis_haken.stl").unwrap();
+    let mesh = hook.mesh().unwrap();
+    assert!(mesh.is_closed());
+    let (lo, hi) = mesh.bbox();
+    let size = skadis_hook_size();
+    for k in 0..3 {
+        assert!(lo[k].abs() < 1e-3 && (hi[k] as f64 - size[k]).abs() < 1e-3, "{lo:?} {hi:?} vs {size:?}");
+    }
+    let plate = &parts[0];
+    assert!(plate.mesh().unwrap().is_closed());
+    let plate = plate.solid.translate(Vec3::new(plate.origin[0], plate.origin[1], 0.0));
+    let top = 2.0 * 42.0;
+    for dx in bingrove_core::spec::skadis_offsets(168.0) {
+        let hook = wall::skadis_hook_at(84.0 + dx, top, &p);
+        let at = |v: [f64; 3]| (&plate ^ &hook.translate(Vec3::new(v[0], v[1], v[2]))).volume();
+        assert!(at([0.0; 3]) < 1e-3, "seated: {}", at([0.0; 3]));
+        // In from behind (the plate lies face down, the tab goes into the pocket).
+        for dz in [-6.0, -3.0, -1.0] {
+            assert!(at([0.0, 0.0, dz]) < 1e-3, "from behind at {dz}: {}", at([0.0, 0.0, dz]));
+        }
+        // Hanging, the plate pulls down on the hook: the dovetail's head holds it.
+        assert!(at([0.0, 1.0, 0.0]) > 1.0, "the plate slips off: {}", at([0.0, 1.0, 0.0]));
+    }
+}

@@ -770,6 +770,12 @@ impl DrawerPanel {
                                 checked: o.mount.connectors,
                                 enabled: true,
                             },
+                            Node::Checkbox {
+                                id: "skadis".into(),
+                                label: "Haken für IKEA Skadis (oben, zum Einschieben)".into(),
+                                checked: o.mount.skadis,
+                                enabled: true,
+                            },
                         ]),
                     ),
                 ],
@@ -2418,6 +2424,7 @@ impl GuestPanel for DrawerPanel {
                         ("hooks", _) => o.hooks = value.as_bool().unwrap_or(true),
                         ("screws", _) => o.mount.screws = value.as_bool().unwrap_or(false),
                         ("connectors", _) => o.mount.connectors = value.as_bool().unwrap_or(false),
+                        ("skadis", _) => o.mount.skadis = value.as_bool().unwrap_or(false),
                         ("printer", _) => s.project.bed = crate::bed_of(text.as_deref()),
                         ("lists", _) => {
                             s.lists = match text.as_deref() {

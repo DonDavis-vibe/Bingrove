@@ -137,6 +137,7 @@ pub fn pieces_of(grid: &Grid, claims: &EdgeClaims, pieces: &[PlatePiece], build:
     let fl = grid.floor;
     let mount = if fl > 0.0 { build.mount } else { Mount::default() };
     let has = |row: usize, col: usize| pieces.iter().any(|q| q.row == row && q.col == col);
+    let top_row = pieces.iter().map(|q| q.row).max().unwrap_or(0);
     pieces
         .iter()
         .map(|piece| {
@@ -155,6 +156,16 @@ pub fn pieces_of(grid: &Grid, claims: &EdgeClaims, pieces: &[PlatePiece], build:
                 ];
                 let (tabs, pockets) = connectors(grid, piece, fl, p, sides);
                 solid = subtract(union(std::iter::once(solid).chain(tabs).collect()), pockets);
+            }
+            if build.wall && build.mount.skadis && piece.row == top_row && fl > 0.0 {
+                // Pockets in the top edge for the Skadis hooks, open towards the wall.
+                let top = grid.line(1, grid.cells[1]);
+                let mid = (x0 + x1) / 2.0;
+                let pockets = skadis_offsets(x1 - x0)
+                    .into_iter()
+                    .map(|dx| dovetail_prism(&top_tail(mid + dx, top, CONNECTOR_GAP), fl, true))
+                    .collect();
+                solid = subtract(solid, pockets);
             }
             let lo = solid.bounding_box().min;
             let solid = solid.translate(Vec3::new(-lo.x, -lo.y, 0.0));
@@ -199,11 +210,11 @@ fn connectors(grid: &Grid, piece: &PlatePiece, fl: f64, p: &Profile, sides: [boo
     let [right, back, left, front] = sides;
     let [fx, fy] = piece.first;
     let [cx, cy] = piece.cells;
-    let z0 = CONNECTOR_INSET;
-    let height = fl - 2.0 * CONNECTOR_INSET;
     let pad_centre = pad(p) / 2.0;
     let (gap, big) = (CONNECTOR_GAP, 1.0);
-    // A dovetail reaching from the line at `at` along `axis` into +axis, centred on `along`.
+    // A dovetail reaching from the line at `at` along `axis` into +axis, centred on `along`. A
+    // tab stands on the build plate; a pocket (grown by the gap) is open below and keeps a skin
+    // on top, so one piece is laid onto the other's tab and the dovetail holds them together.
     let tail = |axis: usize, at: f64, along: f64, grow: f64| -> Solid {
         let (n, hd, d) = (CONNECTOR_NECK / 2.0 + grow, CONNECTOR_HEAD / 2.0 + grow, CONNECTOR_DEPTH + grow);
         let pts: Vec<[f64; 2]> = if axis == 0 {
@@ -211,7 +222,7 @@ fn connectors(grid: &Grid, piece: &PlatePiece, fl: f64, p: &Profile, sides: [boo
         } else {
             vec![[along - n, at - big], [along + n, at - big], [along + hd, at + d], [along - hd, at + d]]
         };
-        translate(&polygon_prism(&pts, 0.0, height, 8), [0.0, 0.0, z0])
+        dovetail_prism(&pts, fl, grow > 0.0)
     };
     let mut tabs = Vec::new();
     let mut pockets = Vec::new();
@@ -231,6 +242,23 @@ fn connectors(grid: &Grid, piece: &PlatePiece, fl: f64, p: &Profile, sides: [boo
         pockets.extend(xs.iter().map(|&x| tail(1, grid.line(1, fy), x, gap)));
     }
     (tabs, pockets)
+}
+
+/// A dovetail outline as a tab (from the build plate up to under the pocket's skin, with air)
+/// or as a pocket (open below, a skin of `CONNECTOR_INSET` on top) in a floor `fl` thick.
+pub(crate) fn dovetail_prism(pts: &[[f64; 2]], fl: f64, pocket: bool) -> Solid {
+    if pocket {
+        translate(&polygon_prism(pts, 0.0, fl - CONNECTOR_INSET + 1.0, 8), [0.0, 0.0, -1.0])
+    } else {
+        polygon_prism(pts, 0.0, fl - CONNECTOR_INSET - CONNECTOR_GAP, 8)
+    }
+}
+
+/// A dovetail reaching from a plate's top edge at `top` down into it, centred on `x`, grown by
+/// `grow`: the outline of a Skadis hook's tab (and, grown, its pocket).
+pub(crate) fn top_tail(x: f64, top: f64, grow: f64) -> Vec<[f64; 2]> {
+    let (n, hd, d) = (CONNECTOR_NECK / 2.0 + grow, CONNECTOR_HEAD / 2.0 + grow, CONNECTOR_DEPTH + grow);
+    vec![[x - n, top + 1.0], [x - hd, top - d], [x + hd, top - d], [x + n, top + 1.0]]
 }
 
 /// The original script's plate: centred grid, solid margins, the given split.

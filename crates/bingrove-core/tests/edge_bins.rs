@@ -84,6 +84,14 @@ fn a_mounted_surface_assembles_from_its_pieces() {
         pieces.iter().map(|p| p.solid.translate(Vec3::new(p.origin[0], p.origin[1], 0.0))).collect();
     let hit = (&placed[0] ^ &placed[1]).volume();
     assert!(hit < 1e-3, "the pieces overlap by {hit:.4} mm³");
+    // The right piece goes on from above: laid down onto the tab, it touches nothing on the way;
+    // pulled apart sideways, the dovetail holds.
+    for dz in [5.0, 3.0, 2.0, 1.0, 0.5] {
+        let v = (&placed[0] ^ &placed[1].translate(Vec3::new(0.0, 0.0, dz))).volume();
+        assert!(v < 1e-3, "laying the right piece on, {dz} mm up: {v:.4} mm³");
+    }
+    let pulled = (&placed[0] ^ &placed[1].translate(Vec3::new(1.0, 0.0, 0.0))).volume();
+    assert!(pulled > 1.0, "the dovetail lets go: {pulled:.4} mm³");
     let cut = plan.grid.line(0, plan.split[0][0]);
     let left = placed[0].bounding_box();
     assert!(left.max.x > cut + 3.5, "the left piece carries the tab: {} vs cut {cut}", left.max.x);

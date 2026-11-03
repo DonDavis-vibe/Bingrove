@@ -76,6 +76,8 @@ pub enum PartSpec {
         holder: HolderSpec,
         hooks: bool,
     },
+    /// A hook that hangs a wall plate on an IKEA Skadis board.
+    SkadisHook,
 }
 
 impl PartSpec {
@@ -218,6 +220,7 @@ fn part_name(part: &PartSpec, pieces: &[PlatePiece], build: PlateBuild) -> Strin
         PartSpec::Lid(l) => crate::names::lid(l),
         PartSpec::WallBin { spec, hooks } => crate::names::wall_bin(spec, *hooks),
         PartSpec::WallHolder { holder, hooks } => crate::names::wall_holder(holder, *hooks),
+        PartSpec::SkadisHook => "skadis_haken.stl".into(),
     }
 }
 
@@ -357,6 +360,19 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
                 parts.push(BomEntry { name, part, quantity: 1, size: lid.size() });
             }
         }
+    }
+
+    // Skadis hooks: one per pocket in the top edge of the top row's pieces.
+    if build.wall && build.mount.skadis {
+        let top_row = pieces.iter().map(|q| q.row).max().unwrap_or(0);
+        let hooks: usize = pieces
+            .iter()
+            .filter(|q| q.row == top_row)
+            .map(|q| crate::spec::skadis_offsets(q.rect[2] - q.rect[0]).len())
+            .sum();
+        let part = PartSpec::SkadisHook;
+        let name = part_name(&part, &pieces, build);
+        parts.push(BomEntry { name, part, quantity: hooks as u32, size: crate::spec::skadis_hook_size() });
     }
 
     for b in &parts {

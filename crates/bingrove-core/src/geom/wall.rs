@@ -319,3 +319,29 @@ fn wall_vslots(s: &WallVSlotSpec, units: u32, hooks: bool, magnets: MagnetMode, 
     }
     solid
 }
+
+/// A hook that hangs a wall plate on an IKEA Skadis board: its dovetail tab goes into a pocket
+/// in the plate's top edge from behind, the bar through a slot of the board and the leg down
+/// behind it. Made lying on its side.
+pub fn skadis_hook(p: &Profile) -> Part {
+    // Lying on its side: x becomes z.
+    let hook = skadis_hook_at(0.0, 0.0, p).rotate(0.0, -90.0, 0.0);
+    let lo = hook.bounding_box().min;
+    Part::new("skadis_haken.stl".into(), translate(&hook, [-lo.x, -lo.y, -lo.z]))
+}
+
+/// A Skadis hook in plate coordinates, its tab centred on `x` in the top edge at `top`.
+pub fn skadis_hook_at(x: f64, top: f64, p: &Profile) -> Solid {
+    let fl = p.magnet.h + p.magnet.floor;
+    let tab = super::baseplate::dovetail_prism(&super::baseplate::top_tail(0.0, 0.0, 0.0), fl, false);
+    let n = CONNECTOR_NECK / 2.0;
+    let w = SKADIS_W / 2.0;
+    let behind = SKADIS_BOARD + SKADIS_AIR;
+    let strip = cuboid([2.0 * n, SKADIS_STEM, SKADIS_STRIP], [-n, 0.0, 0.0]);
+    let bar = cuboid([2.0 * w, SKADIS_BAR, behind + 0.01], [-w, SKADIS_STEM - SKADIS_BAR, -behind]);
+    let leg = cuboid(
+        [2.0 * w, SKADIS_BAR + SKADIS_LEG, SKADIS_T],
+        [-w, SKADIS_STEM - SKADIS_BAR - SKADIS_LEG, -behind - SKADIS_T],
+    );
+    translate(&union(vec![tab, strip, bar, leg]), [x, top, 0.0])
+}

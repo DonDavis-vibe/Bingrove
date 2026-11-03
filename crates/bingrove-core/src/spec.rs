@@ -126,3 +126,32 @@ pub fn body_height(units: u32) -> f64 {
 pub fn wall_size(cells: [u32; 2], units: u32) -> [f64; 3] {
     [bin_outer(cells[0]), body_height(units), bin_outer(cells[1]) - HOOK_LIFT]
 }
+
+/// IKEA Skadis boards: slots 5 mm wide and 15 mm tall, 40 mm apart in a row, the board 5 mm
+/// thick. A hook for a wall plate: a dovetail tab that slides into a pocket in the plate's top
+/// edge (from behind), a strip `SKADIS_STEM` long above the edge and `SKADIS_STRIP` thick, a bar
+/// `SKADIS_W` wide and `SKADIS_BAR` tall through the slot, and a leg `SKADIS_LEG` down behind
+/// the board, `SKADIS_T` thick.
+pub const SKADIS_PITCH: f64 = 40.0;
+pub const SKADIS_BOARD: f64 = 5.0;
+pub const SKADIS_W: f64 = 4.6;
+pub const SKADIS_STEM: f64 = 8.0;
+pub const SKADIS_STRIP: f64 = 5.0;
+pub const SKADIS_BAR: f64 = 4.0;
+pub const SKADIS_LEG: f64 = 10.0;
+pub const SKADIS_T: f64 = 3.0;
+/// Air behind the board for the leg.
+pub const SKADIS_AIR: f64 = 0.6;
+
+/// Where the Skadis hooks of a plate piece `width` wide go, from its middle: a pair as far
+/// apart as whole slot pitches allow with 15 mm to the ends, or one in the middle.
+pub fn skadis_offsets(width: f64) -> Vec<f64> {
+    let k = ((width - 30.0) / SKADIS_PITCH).floor();
+    if k < 1.0 { vec![0.0] } else { vec![-k * SKADIS_PITCH / 2.0, k * SKADIS_PITCH / 2.0] }
+}
+
+/// A Skadis hook's size as printed, lying on its side.
+pub fn skadis_hook_size() -> [f64; 3] {
+    let low = (-CONNECTOR_DEPTH).min(SKADIS_STEM - SKADIS_BAR - SKADIS_LEG);
+    [SKADIS_STRIP + SKADIS_BOARD + SKADIS_AIR + SKADIS_T, SKADIS_STEM - low, CONNECTOR_HEAD]
+}

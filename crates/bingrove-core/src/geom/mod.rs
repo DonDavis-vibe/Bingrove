@@ -69,6 +69,7 @@ pub fn part(plan: &Plan, index: usize, p: &Profile) -> Part {
             part.name = plan.parts[index].name.clone();
             part
         }
+        PartSpec::SkadisHook => wall::skadis_hook(p),
     }
 }
 
