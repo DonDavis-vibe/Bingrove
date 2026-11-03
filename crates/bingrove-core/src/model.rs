@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::spec::{BIN_SIZE, BP_H, CLEARANCE, FLOOR_Z, GRID, TAPE_ROLL_GAP, TAPE_W, UNIT, bin_outer};
+use crate::spec::{BIN_SIZE, BP_H, CLEARANCE, FLOOR_Z, GRID, PEG_BASE, PEG_H, TAPE_ROLL_GAP, TAPE_W, UNIT, bin_outer};
 
 /// Which magnet holes a bin gets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
@@ -236,15 +236,57 @@ impl RowHole {
     }
 }
 
+/// A socket's drive: the square the socket sits on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Drive {
+    Quarter,
+    ThreeEighths,
+    Half,
+}
+
+impl Drive {
+    /// The drive square, mm.
+    pub fn square(self) -> f64 {
+        match self {
+            Drive::Quarter => 6.35,
+            Drive::ThreeEighths => 9.525,
+            Drive::Half => 12.7,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Drive::Quarter => "1/4\"",
+            Drive::ThreeEighths => "3/8\"",
+            Drive::Half => "1/2\"",
+        }
+    }
+
+    /// For file names.
+    pub fn slug(self) -> &'static str {
+        match self {
+            Drive::Quarter => "14",
+            Drive::ThreeEighths => "38",
+            Drive::Half => "12",
+        }
+    }
+
+    pub const ALL: [Drive; 3] = [Drive::Quarter, Drive::ThreeEighths, Drive::Half];
+}
+
 /// Rows of holes with their own sizes, each size engraved in front of its hole: sockets,
 /// screwdrivers, drills, hex keys. Rows run along x; with `stepped` every row further back
-/// stands one unit higher so the labels stay readable.
+/// stands one unit higher so the labels stay readable. With `pegs` the holes become square
+/// pegs of that drive instead, which sockets sit on whatever their outside looks like; the
+/// hole size then only spaces them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RowSpec {
     pub rows: Vec<Vec<RowHole>>,
     pub shape: HoleShape,
     pub stepped: bool,
+    pub pegs: Option<Drive>,
     /// Air around each thing.
     pub clearance: f64,
     pub cells: [u32; 2],
@@ -259,6 +301,7 @@ impl Default for RowSpec {
             rows: vec![vec![RowHole::default()]],
             shape: HoleShape::Round,
             stepped: false,
+            pegs: None,
             clearance: 1.0,
             cells: [2, 1],
             units: None,
@@ -280,6 +323,77 @@ impl RowSpec {
     /// Whether any hole or the title carries text.
     pub fn has_labels(&self) -> bool {
         self.title.is_some() || self.rows.iter().flatten().any(|h| !h.label.trim().is_empty())
+    }
+}
+
+/// One place of a cradle holder: how wide and long the thing lying in it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CradleSlot {
+    pub width: f64,
+    pub length: f64,
+    pub label: String,
+}
+
+impl Default for CradleSlot {
+    fn default() -> Self {
+        CradleSlot { width: 20.0, length: 120.0, label: String::new() }
+    }
+}
+
+/// Sloped beds for things lying front to back (extension bars, ratchets, files), side by side
+/// along x: the bed of every place rises towards the back by `angle`, so the front end is easy
+/// to grab; with `stepped` each place further right stands one unit higher.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CradleSpec {
+    pub slots: Vec<CradleSlot>,
+    pub stepped: bool,
+    /// Slope of the beds in degrees, front low.
+    pub angle: f64,
+    /// Air beside each thing.
+    pub clearance: f64,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+    pub title: Option<String>,
+}
+
+impl Default for CradleSpec {
+    fn default() -> Self {
+        CradleSpec {
+            slots: vec![CradleSlot::default()],
+            stepped: false,
+            angle: 8.0,
+            clearance: 1.0,
+            cells: [1, 3],
+            units: None,
+            title: None,
+        }
+    }
+}
+
+impl CradleSpec {
+    /// Depth of a place's bed at the front: a little over half the thing.
+    pub fn bed_depth(slot: &CradleSlot) -> f64 {
+        (slot.width * 0.55).max(4.0)
+    }
+
+    /// How much a bed rises over `length`: the slope, but never more than three units, so a
+    /// long bar does not make a tower of its holder.
+    pub fn rise_over(&self, length: f64) -> f64 {
+        (length * self.angle.to_radians().tan()).min(3.0 * crate::spec::UNIT)
+    }
+
+    /// How much a bed rises from front to back.
+    pub fn rise(&self, slot: &CradleSlot) -> f64 {
+        self.rise_over(slot.length)
+    }
+
+    /// Height the tallest place needs above the floor.
+    pub fn max_height(&self) -> f64 {
+        let steps = if self.stepped { self.slots.len().saturating_sub(1) as f64 } else { 0.0 };
+        self.slots.iter().map(|s| Self::bed_depth(s) + self.rise(s) + 2.0).fold(0.0, f64::max)
+            + steps * crate::spec::UNIT
     }
 }
 
@@ -363,6 +477,7 @@ pub enum HolderSpec {
     Troughs(TroughSpec),
     Row(RowSpec),
     Slots(SlotSpec),
+    Cradles(CradleSpec),
 }
 
 /// Air around hex bits (across flats) and a 1/4" bit's size.
@@ -379,6 +494,7 @@ impl HolderSpec {
             HolderSpec::Troughs(t) => t.cells,
             HolderSpec::Row(r) => r.cells,
             HolderSpec::Slots(s) => s.cells,
+            HolderSpec::Cradles(c) => c.cells,
         }
     }
 
@@ -391,6 +507,7 @@ impl HolderSpec {
             HolderSpec::Troughs(t) => t.cells = cells,
             HolderSpec::Row(r) => r.cells = cells,
             HolderSpec::Slots(s) => s.cells = cells,
+            HolderSpec::Cradles(c) => c.cells = cells,
         }
         self
     }
@@ -405,9 +522,12 @@ impl HolderSpec {
             HolderSpec::Troughs(t) => t.units.unwrap_or_else(|| from_depth(t.handle.unwrap_or(t.diameter) + 1.0)),
             HolderSpec::Row(r) => r.units.unwrap_or_else(|| {
                 let steps = if r.stepped { r.rows.len().saturating_sub(1) as f64 } else { 0.0 };
-                from_depth(r.max_depth() + steps * UNIT)
+                // Pegs stand on a thin base and reach PEG_H above it; holes go down instead.
+                let reach = if r.pegs.is_some() { PEG_BASE + PEG_H } else { r.max_depth() };
+                from_depth(reach + steps * UNIT)
             }),
             HolderSpec::Slots(s) => s.units.unwrap_or_else(|| from_depth(s.depth)),
+            HolderSpec::Cradles(c) => c.units.unwrap_or_else(|| from_depth(c.max_height())),
         }
     }
 
@@ -443,9 +563,15 @@ impl HolderSpec {
             HolderSpec::Row(r) => {
                 let title = r.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
                 let what = title.unwrap_or_else(|| format!("{}loch", r.hole_count()));
-                format!("reihe_{what}{}", if r.stepped { "_gestuft" } else { "" })
+                let pegs = r.pegs.map(|d| format!("_stecker{}", d.slug())).unwrap_or_default();
+                format!("reihe_{what}{pegs}{}", if r.stepped { "_gestuft" } else { "" })
             }
             HolderSpec::Slots(s) => format!("schlitze_{}", crate::names::mm(s.width)),
+            HolderSpec::Cradles(c) => {
+                let title = c.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
+                let what = title.unwrap_or_else(|| format!("{}", c.slots.len()));
+                format!("wiegen_{what}{}", if c.stepped { "_gestuft" } else { "" })
+            }
         }
     }
 }

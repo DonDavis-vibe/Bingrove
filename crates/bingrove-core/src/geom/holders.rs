@@ -3,15 +3,15 @@
 use super::Part;
 use super::bin::edge_bin;
 use super::insert::with_pockets;
-use super::kernel::{Solid, cuboid, cylinder, hex_prism, rrect_prism, subtract, translate, union};
+use super::kernel::{Solid, Vec3, cuboid, cylinder, hex_prism, rrect_prism, subtract, translate, union};
 use super::tape;
 use crate::catalog::{
     HOLE_WALL, PATTERN_MARGIN, ROW_LABEL_STRIP, across, bit_pitch, bits_grid, hole_pitch, holes_grid, row_pitch,
     slot_count, trough_count,
 };
 use crate::model::{
-    BIT_ACROSS_FLATS, BIT_CLEARANCE, BIT_DEPTH, BinSpec, EdgeMode, HolderSpec, HoleShape, HolesSpec, RowSpec, SlotSpec,
-    TroughSpec,
+    BIT_ACROSS_FLATS, BIT_CLEARANCE, BIT_DEPTH, BinSpec, CradleSpec, EdgeMode, HolderSpec, HoleShape, HolesSpec,
+    RowSpec, SlotSpec, TroughSpec,
 };
 use crate::profile::Profile;
 use crate::spec::*;
@@ -81,15 +81,17 @@ fn row(spec: &RowSpec, units: u32, p: &Profile) -> Solid {
     let h_body = body_height(units);
     let rows = spec.rows.len().max(1);
     let step = if spec.stepped { UNIT } else { 0.0 };
-    let base_top = (FLOOR_Z + FLOOR + spec.max_depth())
-        .min(h_body - DIVIDER_GAP - step * (rows as f64 - 1.0))
-        .max(FLOOR_Z + FLOOR + 1.0);
+    // Holes go down into the insert; pegs stand on a thin base above the floor.
+    let reach = if spec.pegs.is_some() { PEG_BASE } else { spec.max_depth() };
+    let base_top =
+        (FLOOR_Z + FLOOR + reach).min(h_body - DIVIDER_GAP - step * (rows as f64 - 1.0)).max(FLOOR_Z + FLOOR + 1.0);
     let label = if spec.has_labels() { ROW_LABEL_STRIP } else { 0.0 };
     let total: f64 = spec.rows.iter().map(|r| row_pitch(spec, r)).sum();
     let inner_w = w - 2.0 * WALL + 0.02;
     let z0 = FLOOR_Z - 0.01;
     let mut y = d / 2.0 - total / 2.0;
     let mut blocks = vec![shell(spec.cells, units, p)];
+    let mut pegs = Vec::new();
     let mut cuts = Vec::new();
     for (k, holes) in spec.rows.iter().enumerate() {
         let pitch = row_pitch(spec, holes);
@@ -101,9 +103,18 @@ fn row(spec: &RowSpec, units: u32, p: &Profile) -> Solid {
         let mut x = w / 2.0 - row_w / 2.0 + HOLE_WALL;
         for h in holes {
             let a = across(spec.shape, h.d + spec.clearance);
-            let depth = h.depth().min(top_k - FLOOR_Z - FLOOR);
-            let hole = hole_solid(spec.shape, h.d + spec.clearance, depth, 0.8, p.seg);
-            cuts.push(translate(&hole, [x + a / 2.0, cy, top_k - depth]));
+            match spec.pegs {
+                Some(drive) => {
+                    // A square peg standing on the strip, chamfered at the top.
+                    let side = (drive.square() - p.peg_undersize).max(3.0);
+                    pegs.push(translate(&peg(side, PEG_H), [x + a / 2.0, cy, top_k]));
+                }
+                None => {
+                    let depth = h.depth().min(top_k - FLOOR_Z - FLOOR);
+                    let hole = hole_solid(spec.shape, h.d + spec.clearance, depth, 0.8, p.seg);
+                    cuts.push(translate(&hole, [x + a / 2.0, cy, top_k - depth]));
+                }
+            }
             // The size in front of its hole, as large as the strip and the hole's width allow.
             let text = h.label.trim();
             if label > 0.0 && !text.is_empty() {
@@ -119,6 +130,64 @@ fn row(spec: &RowSpec, units: u32, p: &Profile) -> Solid {
         let y1 = if k == rows - 1 { d - WALL + 0.01 } else { y + pitch };
         blocks.push(cuboid([inner_w, y1 - y0, top_k - z0], [WALL - 0.01, y0, z0]));
         y += pitch;
+    }
+    let body = subtract(union(blocks), cuts);
+    if pegs.is_empty() { body } else { union(std::iter::once(body).chain(pegs).collect()) }
+}
+
+/// A square peg of `side` standing on z = 0, `height` tall, its top edges chamfered by 0.8 mm,
+/// sunk 1 mm into whatever it stands on.
+fn peg(side: f64, height: f64) -> Solid {
+    let (h, c) = (side / 2.0, (side / 2.0 - 0.8).max(1.0));
+    let corners = |r: f64, z: f64| [[-r, -r], [r, -r], [r, r], [-r, r]].map(|[x, y]| Vec3::new(x, y, z));
+    let mut pts: Vec<Vec3> = corners(h, -1.0).to_vec();
+    pts.extend(corners(h, height - 0.8));
+    pts.extend(corners(c, height));
+    Solid::hull(&pts)
+}
+
+/// Sloped beds side by side along x for things lying front to back: each place is a strip of
+/// the insert whose top rises towards the back by the holder's angle, with the thing's bed cut
+/// in parallel to it; every place further right stands a unit higher when stepped.
+fn cradles(spec: &CradleSpec, units: u32, p: &Profile) -> Solid {
+    let [w, d] = spec.cells.map(bin_outer);
+    let h_body = body_height(units);
+    let step = if spec.stepped { UNIT } else { 0.0 };
+    let total: f64 = spec.slots.iter().map(|s| s.width + spec.clearance + HOLE_WALL).sum::<f64>() + HOLE_WALL;
+    let (y0, y1) = (WALL - 0.01, d - WALL + 0.01);
+    let inner_d = y1 - y0;
+    let z0 = FLOOR_Z - 0.01;
+    let mut x = w / 2.0 - total / 2.0;
+    let mut blocks = vec![shell(spec.cells, units, p)];
+    let mut cuts = Vec::new();
+    for (k, slot) in spec.slots.iter().enumerate() {
+        let width = slot.width + spec.clearance;
+        let bed = CradleSpec::bed_depth(slot);
+        // The strip: a wedge from the front (low) to the back (high), clipped to the body.
+        let front_top = (FLOOR_Z + FLOOR + bed + 1.0 + k as f64 * step).min(h_body - DIVIDER_GAP);
+        let back_top = (front_top + spec.rise_over(inner_d)).min(h_body - DIVIDER_GAP);
+        let (xa, xb) = (
+            if k == 0 { WALL - 0.01 } else { x },
+            if k + 1 == spec.slots.len() { w - WALL + 0.01 } else { x + width + HOLE_WALL },
+        );
+        let wedge = Solid::hull(&[
+            Vec3::new(xa, y0, z0),
+            Vec3::new(xb, y0, z0),
+            Vec3::new(xb, y1, z0),
+            Vec3::new(xa, y1, z0),
+            Vec3::new(xa, y0, front_top),
+            Vec3::new(xb, y0, front_top),
+            Vec3::new(xb, y1, back_top),
+            Vec3::new(xa, y1, back_top),
+        ]);
+        blocks.push(wedge);
+        // The bed: a box as long as the thing, lying parallel to the wedge's top, `bed` deep.
+        let length = slot.length.min(inner_d - 1.0);
+        let slope = (back_top - front_top) / inner_d;
+        let tilt = slope.atan().to_degrees();
+        let box_ = cuboid([width, length + 1.0, bed + 50.0], [0.0, -1.0, -bed]).rotate(tilt, 0.0, 0.0);
+        cuts.push(translate(&box_, [x + HOLE_WALL, y0 + 1.0, front_top + slope * 1.0]));
+        x += width + HOLE_WALL;
     }
     subtract(union(blocks), cuts)
 }
@@ -176,6 +245,7 @@ fn front_text(h: &HolderSpec) -> Option<&str> {
         HolderSpec::Holes(s) => s.label.as_deref(),
         HolderSpec::Slots(s) => s.label.as_deref(),
         HolderSpec::Row(r) => r.title.as_deref(),
+        HolderSpec::Cradles(c) => c.title.as_deref(),
         _ => None,
     }
     .map(str::trim)
@@ -191,6 +261,7 @@ pub fn holder(h: &HolderSpec, p: &Profile) -> Part {
         HolderSpec::Troughs(t) => troughs(t, units, p),
         HolderSpec::Row(r) => row(r, units, p),
         HolderSpec::Slots(s) => slots(s, units, p),
+        HolderSpec::Cradles(c) => cradles(c, units, p),
     };
     if let Some(text) = front_text(h) {
         let w = bin_outer(h.cells()[0]);

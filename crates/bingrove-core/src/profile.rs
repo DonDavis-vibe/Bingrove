@@ -45,11 +45,13 @@ pub struct Profile {
     pub magnet: MagnetSpec,
     /// Segments of a full circle (rounded corners use a quarter of it).
     pub seg: u32,
+    /// How much narrower a socket peg is than the drive square, so the socket slides on.
+    pub peg_undersize: f64,
 }
 
 impl Default for Profile {
     fn default() -> Self {
-        Profile { name: "4-mm-Magnete".into(), magnet: MagnetSpec::magnets_4mm(), seg: 64 }
+        Profile { name: "4-mm-Magnete".into(), magnet: MagnetSpec::magnets_4mm(), seg: 64, peg_undersize: 0.3 }
     }
 }
 

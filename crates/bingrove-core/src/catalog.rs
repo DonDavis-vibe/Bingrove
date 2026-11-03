@@ -4,8 +4,8 @@
 use serde::Serialize;
 
 use crate::model::{
-    BIT_ACROSS_FLATS, BIT_CLEARANCE, HolderSpec, HoleShape, HolesSpec, RoundItem, RowHole, RowSpec, SlotSpec,
-    TroughSpec,
+    BIT_ACROSS_FLATS, BIT_CLEARANCE, CradleSlot, CradleSpec, Drive, HolderSpec, HoleShape, HolesSpec, RoundItem,
+    RowHole, RowSpec, SlotSpec, TroughSpec,
 };
 use crate::spec::{GRID, WALL, bin_outer};
 
@@ -109,7 +109,20 @@ pub fn capacity(h: &HolderSpec) -> u32 {
         HolderSpec::Troughs(t) => trough_count(t),
         HolderSpec::Row(r) => r.hole_count(),
         HolderSpec::Slots(s) => slot_count(s),
+        HolderSpec::Cradles(c) => c.slots.len() as u32,
     }
+}
+
+/// Width and depth the places of a cradle holder need inside the bin.
+pub fn cradle_extent(spec: &CradleSpec) -> [f64; 2] {
+    let width = spec.slots.iter().map(|s| s.width + spec.clearance + HOLE_WALL).sum::<f64>() + HOLE_WALL;
+    let depth = spec.slots.iter().map(|s| s.length).fold(0.0, f64::max) + 2.0;
+    [width, depth]
+}
+
+/// The smallest footprint for a cradle holder.
+pub fn cradle_cells(spec: &CradleSpec) -> [u32; 2] {
+    cradle_extent(spec).map(cells_needed)
 }
 
 /// The smallest footprint (by area, then the squarer one) that holds `count` things; a row
@@ -118,6 +131,7 @@ pub fn cells_for(h: &HolderSpec, count: u32) -> [u32; 2] {
     match h {
         HolderSpec::Tape(_) => return h.cells(),
         HolderSpec::Row(r) => return row_cells(r),
+        HolderSpec::Cradles(c) => return cradle_cells(c),
         _ => {}
     }
     let mut best: Option<[u32; 2]> = None;
@@ -212,6 +226,11 @@ pub fn catalog() -> Vec<CatalogEntry> {
         CatalogEntry { id: "swatches", label: "Filament-Swatches (Schlitze)", holder: slots(3.0, 24.0, 6.0) },
         CatalogEntry { id: "blades", label: "Sägeblätter (Schlitze)", holder: slots(2.0, 40.0, 5.0) },
         CatalogEntry {
+            id: "cradles",
+            label: "Wiegen (liegende Werkzeuge)",
+            holder: HolderSpec::Cradles(CradleSpec::default()),
+        },
+        CatalogEntry {
             id: "row",
             label: "Lochreihe (eigene Größen)",
             holder: HolderSpec::Row(RowSpec {
@@ -233,6 +252,9 @@ pub struct HolderSet {
     pub id: &'static str,
     pub label: &'static str,
     pub holder: HolderSpec,
+    /// The drive of a socket set, so it can be offered on pegs too.
+    #[serde(skip)]
+    pub drive: Option<Drive>,
 }
 
 /// Typical outside diameter of a six-point socket of nominal `size` mm on a drive, mm.
@@ -244,13 +266,6 @@ pub fn socket_od(drive: Drive, size_mm: f64) -> f64 {
         Drive::Half => (23.5, 8.5),
     };
     ((size_mm + add).max(min) * 10.0).round() / 10.0
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Drive {
-    Quarter,
-    ThreeEighths,
-    Half,
 }
 
 /// An inch fraction like "1 1/16" as mm.
@@ -286,7 +301,59 @@ fn row(rows: Vec<Vec<RowHole>>, title: &str, shape: HoleShape, stepped: bool) ->
     HolderSpec::Row(spec)
 }
 
+/// The socket sets again as peg holders, plus cradles for lying tools.
+fn more_sets(socket_sets: &[HolderSet]) -> Vec<HolderSet> {
+    let mut out = Vec::new();
+    for set in socket_sets {
+        let HolderSpec::Row(r) = &set.holder else { continue };
+        let Some(drive) = set.drive else { continue };
+        let mut spec = RowSpec { pegs: Some(drive), ..r.clone() };
+        spec.cells = row_cells(&spec);
+        let id: &'static str = Box::leak(set.id.replace("sockets", "pegs").into_boxed_str());
+        let label: &'static str = Box::leak(format!("{} auf Steckern", set.label).into_boxed_str());
+        out.push(HolderSet { id, label, holder: HolderSpec::Row(spec), drive: Some(drive) });
+    }
+    let cradles = |slots: Vec<(f64, f64, &str)>, title: &str, stepped: bool| {
+        let slots = slots
+            .into_iter()
+            .map(|(width, length, label)| CradleSlot { width, length, label: label.to_string() })
+            .collect();
+        let mut spec = CradleSpec { slots, stepped, title: Some(title.into()), ..CradleSpec::default() };
+        spec.cells = cradle_cells(&spec);
+        HolderSpec::Cradles(spec)
+    };
+    out.push(HolderSet {
+        id: "extensions",
+        label: "Verlängerungen 1/4\"–1/2\" (Wiegen)",
+        holder: cradles(
+            vec![
+                (13.0, 100.0, "1/4"),
+                (13.0, 150.0, "1/4"),
+                (18.0, 125.0, "3/8"),
+                (18.0, 250.0, "3/8"),
+                (24.0, 250.0, "1/2"),
+            ],
+            "Verlängerungen",
+            false,
+        ),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "ratchets",
+        label: "Ratschen (Wiegen, gestuft)",
+        holder: cradles(vec![(22.0, 150.0, "1/4"), (30.0, 200.0, "3/8"), (40.0, 250.0, "1/2")], "Ratschen", true),
+        drive: None,
+    });
+    out
+}
+
 pub fn sets() -> Vec<HolderSet> {
+    let mut all = base_sets();
+    all.extend(more_sets(&all));
+    all
+}
+
+fn base_sets() -> Vec<HolderSet> {
     let sockets = |drive: Drive, sizes: Vec<(String, f64)>| {
         let refs: Vec<(&str, f64)> = sizes.iter().map(|(l, mm)| (l.as_str(), *mm)).collect();
         socket_row(drive, &refs)
@@ -307,6 +374,7 @@ pub fn sets() -> Vec<HolderSet> {
                 HoleShape::Round,
                 false,
             ),
+            drive: Some(Drive::Quarter),
         },
         HolderSet {
             id: "sockets_3_8_mm",
@@ -320,6 +388,7 @@ pub fn sets() -> Vec<HolderSet> {
                 HoleShape::Round,
                 false,
             ),
+            drive: Some(Drive::ThreeEighths),
         },
         HolderSet {
             id: "sockets_1_2_mm",
@@ -336,6 +405,7 @@ pub fn sets() -> Vec<HolderSet> {
                 HoleShape::Round,
                 false,
             ),
+            drive: Some(Drive::Half),
         },
         HolderSet {
             id: "sockets_1_4_in",
@@ -349,6 +419,7 @@ pub fn sets() -> Vec<HolderSet> {
                 HoleShape::Round,
                 false,
             ),
+            drive: Some(Drive::Quarter),
         },
         HolderSet {
             id: "sockets_3_8_in",
@@ -362,6 +433,7 @@ pub fn sets() -> Vec<HolderSet> {
                 HoleShape::Round,
                 false,
             ),
+            drive: Some(Drive::ThreeEighths),
         },
         HolderSet {
             id: "sockets_1_2_in",
@@ -378,6 +450,7 @@ pub fn sets() -> Vec<HolderSet> {
                 HoleShape::Round,
                 false,
             ),
+            drive: Some(Drive::Half),
         },
         HolderSet {
             id: "sockets_1_4_both",
@@ -399,6 +472,7 @@ pub fn sets() -> Vec<HolderSet> {
                 HoleShape::Round,
                 true,
             ),
+            drive: Some(Drive::Quarter),
         },
         HolderSet {
             id: "hex_keys",
@@ -409,6 +483,7 @@ pub fn sets() -> Vec<HolderSet> {
                 HoleShape::Hex,
                 false,
             ),
+            drive: None,
         },
         HolderSet {
             id: "drills",
@@ -422,6 +497,7 @@ pub fn sets() -> Vec<HolderSet> {
                 HoleShape::Round,
                 true,
             ),
+            drive: None,
         },
         HolderSet {
             id: "screwdrivers_standing",
@@ -432,6 +508,7 @@ pub fn sets() -> Vec<HolderSet> {
                 HoleShape::Round,
                 false,
             ),
+            drive: None,
         },
     ]
 }

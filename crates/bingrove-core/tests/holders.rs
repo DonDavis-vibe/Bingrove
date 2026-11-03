@@ -126,6 +126,55 @@ fn rows_slots_and_shapes() {
 }
 
 #[test]
+fn pegs_and_cradles() {
+    use bingrove_core::catalog::sets;
+    use bingrove_core::spec::{PEG_BASE, PEG_H};
+    let p = Profile::default();
+    // The 1/4" socket set on pegs: same spacing, pegs stand on a thin base instead of holes.
+    let set = sets().into_iter().find(|s| s.id == "pegs_1_4_mm").unwrap().holder;
+    let HolderSpec::Row(r) = &set else { panic!() };
+    assert_eq!(r.pegs, Some(bingrove_core::model::Drive::Quarter));
+    assert_eq!(set.units(), ((bingrove_core::spec::FLOOR_Z + PEG_BASE + PEG_H + 2.0) / UNIT).ceil() as u32);
+    let part = holders::holder(&set, &p);
+    assert!(part.name.contains("_stecker14_"), "{}", part.name);
+    let mesh = part.mesh().unwrap();
+    assert!(mesh.is_closed());
+    // The pegs add material to the base: more volume than the same shell with a bare base.
+    let holes = sets().into_iter().find(|s| s.id == "sockets_1_4_mm").unwrap().holder;
+    let plain_base = holders::holder(
+        &HolderSpec::Row(bingrove_core::model::RowSpec {
+            rows: vec![vec![]],
+            pegs: Some(bingrove_core::model::Drive::Quarter),
+            cells: r.cells,
+            units: Some(set.units()),
+            ..bingrove_core::model::RowSpec::default()
+        }),
+        &p,
+    )
+    .mesh()
+    .unwrap()
+    .volume();
+    let peg = (6.35_f64 - p.peg_undersize).powi(2) * PEG_H;
+    assert!(mesh.volume() > plain_base + 13.0 * peg * 0.8, "pegs missing: {} vs {plain_base}", mesh.volume());
+    assert_ne!(holes.cells(), [0, 0]);
+
+    // Cradles: three stepped beds, the right one a unit higher, every bed rising to the back.
+    let ratchets = sets().into_iter().find(|s| s.id == "ratchets").unwrap().holder;
+    let part = holders::holder(&ratchets, &p);
+    assert!(part.name.starts_with("halter_wiegen_Ratschen_gestuft_"), "{}", part.name);
+    let mesh = part.mesh().unwrap();
+    assert!(mesh.is_closed(), "{}", part.name);
+    let (lo, hi) = mesh.bbox();
+    let size = ratchets.size();
+    assert!(((hi[2] - lo[2]) as f64 - size[2]).abs() < 1e-3);
+    assert!(lo.iter().all(|v| v.abs() < 1e-3));
+    let HolderSpec::Cradles(c) = &ratchets else { panic!() };
+    assert!(c.cells[0] >= 3 && c.cells[1] >= 6, "{:?}", c.cells);
+    let shell = plain(c.cells, ratchets.units(), &p);
+    assert!(mesh.volume() > shell, "the wedges fill the bin");
+}
+
+#[test]
 fn engraving_takes_material_and_names_the_part() {
     let p = Profile::default();
     let plain_bin = BinSpec { cells: [2, 1], units: 6, label_tab: true, ..BinSpec::default() };
@@ -185,14 +234,15 @@ fn cutouts_pocket_the_insert() {
 fn calibration_pieces() {
     let p = Profile::default();
     let parts = calibration::parts(&p);
-    assert_eq!(parts.len(), 7);
+    assert_eq!(parts.len(), 8);
+    assert_eq!(parts[7].name, "kalibrierung_stecker.stl");
     let names: Vec<_> = parts.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(names[0], "kalibrierung_magnete_3.9-4.5.stl");
     assert_eq!(
         names[2..5],
         ["kalibrierung_passung_bin_0.15.stl", "kalibrierung_passung_bin_0.25.stl", "kalibrierung_passung_bin_0.35.stl"]
     );
-    assert_eq!(names[5..], ["kalibrierung_verbinder_a.stl", "kalibrierung_verbinder_b.stl"]);
+    assert_eq!(names[5..7], ["kalibrierung_verbinder_a.stl", "kalibrierung_verbinder_b.stl"]);
     // The tab fits its pocket: a laid against b (b's left edge at a's right edge) leaves no overlap.
     let (a, b) = (&parts[5].solid, &parts[6].solid);
     let joined = (a ^ &b.translate(bingrove_core::geom::kernel::Vec3::new(24.0, 0.0, 0.0))).volume();

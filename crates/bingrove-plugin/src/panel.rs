@@ -5,11 +5,11 @@
 use std::cell::RefCell;
 use std::cmp::Ordering;
 
-use bingrove_core::catalog::{holes_grid, row_cells, sets};
+use bingrove_core::catalog::{cradle_cells, holes_grid, row_cells, sets};
 use bingrove_core::grid::Zone;
 use bingrove_core::model::{
-    Align, BinSpec, Cover, Cutout, DrawerProject, EdgeMode, HolderSpec, HoleShape, Kind, Placement, PlateFloor,
-    RoundItem, RowHole, Side,
+    Align, BinSpec, Cover, CradleSlot, Cutout, DrawerProject, Drive, EdgeMode, HolderSpec, HoleShape, Kind, Placement,
+    PlateFloor, RoundItem, RowHole, Side,
 };
 use bingrove_core::names::mm;
 use bingrove_core::plan::{PartSpec, Plan, plan};
@@ -112,6 +112,7 @@ fn holder_label(h: &HolderSpec) -> String {
         }
         HolderSpec::Row(r) => r.title.clone().unwrap_or_else(|| format!("{} Löcher", r.hole_count())),
         HolderSpec::Slots(_) => "Schlitze".into(),
+        HolderSpec::Cradles(c) => c.title.clone().unwrap_or_else(|| format!("{} Wiegen", c.slots.len())),
     }
 }
 
@@ -129,7 +130,9 @@ fn set_holder(p: &mut Placement, id: &str) {
 }
 
 /// The holder fields of the selection form ("sel_" stripped) that carry numbers.
-const HOLDER_FIELDS: [&str; 22] = [
+const HOLDER_FIELDS: [&str; 24] = [
+    "cradle_angle",
+    "cradle_clear",
     "hole_d",
     "hole_h",
     "clear",
@@ -189,16 +192,47 @@ fn holder_field(p: &mut Placement, field: &str, v: f64) {
         (Some(HolderSpec::Slots(s)), "slot_len") => s.length = (v > 0.0).then_some(v),
         (Some(HolderSpec::Slots(s)), "slot_n") => s.count = (v >= 1.0).then(|| whole(v)),
         (Some(HolderSpec::Row(r)), "row_clear") => r.clearance = v.clamp(0.0, 5.0),
+        (Some(HolderSpec::Cradles(c)), "cradle_angle") => c.angle = v.clamp(0.0, 30.0),
+        (Some(HolderSpec::Cradles(c)), "cradle_clear") => c.clearance = v.clamp(0.0, 5.0),
         _ => {}
     }
     refresh_holder(p);
 }
 
+/// "22x150=1/4, 30x200=3/8" as cradle places: width × length, with a label after "=".
+fn parse_cradles(text: &str) -> Vec<CradleSlot> {
+    text.split([',', ';'])
+        .filter_map(|part| {
+            let part = part.trim();
+            let (size, label) = match part.split_once('=') {
+                Some((s, l)) => (s.trim(), l.trim()),
+                None => (part, ""),
+            };
+            let (w, l) = size.split_once(['x', '×'])?;
+            let (width, length): (f64, f64) = (w.trim().parse().ok()?, l.trim().parse().ok()?);
+            (width > 0.0 && length > 0.0).then(|| CradleSlot { width, length, label: label.to_string() })
+        })
+        .collect()
+}
+
+fn cradle_text(slots: &[CradleSlot]) -> String {
+    slots
+        .iter()
+        .map(|s| {
+            let size = format!("{}x{}", mm(s.width), mm(s.length));
+            if s.label.is_empty() { size } else { format!("{size}={}", s.label) }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// After a holder changed: a row's footprint follows its holes, tape its rolls, and the bin takes
 /// the holder's cells and height.
 fn refresh_holder(p: &mut Placement) {
-    if let Some(HolderSpec::Row(r)) = &mut p.holder {
-        r.cells = row_cells(r);
+    match &mut p.holder {
+        Some(HolderSpec::Row(r)) => r.cells = row_cells(r),
+        Some(HolderSpec::Cradles(c)) => c.cells = cradle_cells(c),
+        _ => {}
     }
     if let Some(h) = &p.holder {
         p.bin.cells = h.cells();
@@ -247,7 +281,11 @@ fn holder_id(p: &Placement) -> &'static str {
     match &p.holder {
         None => "none",
         Some(h) => {
-            let fallback = if matches!(h, HolderSpec::Row(_)) { "row" } else { "custom" };
+            let fallback = match h {
+                HolderSpec::Row(_) => "row",
+                HolderSpec::Cradles(_) => "cradles",
+                _ => "custom",
+            };
             catalog().into_iter().find(|c| c.holder.clone().with_cells(h.cells()) == *h).map_or(fallback, |c| c.id)
         }
     }
@@ -881,6 +919,44 @@ impl DrawerPanel {
                 }
                 refresh_holder(p);
             }),
+            ("row_pegs", _, _, Some(t)) => self.edit_selected(|p| {
+                if let Some(HolderSpec::Row(r)) = &mut p.holder {
+                    r.pegs = match t.as_str() {
+                        "quarter" => Some(Drive::Quarter),
+                        "three_eighths" => Some(Drive::ThreeEighths),
+                        "half" => Some(Drive::Half),
+                        _ => None,
+                    };
+                }
+                refresh_holder(p);
+            }),
+            ("cradle_title", _, _, Some(t)) => self.edit_selected(|p| {
+                if let Some(HolderSpec::Cradles(c)) = &mut p.holder {
+                    c.title = (!t.is_empty()).then(|| t.clone());
+                }
+                refresh_holder(p);
+            }),
+            ("cradle_stepped", _, Some(on), _) => self.edit_selected(|p| {
+                if let Some(HolderSpec::Cradles(c)) = &mut p.holder {
+                    c.stepped = on;
+                }
+                refresh_holder(p);
+            }),
+            ("cradle_slots", _, _, Some(t)) => {
+                let slots = parse_cradles(&t);
+                if slots.is_empty() {
+                    return vec![Effect::Toast {
+                        text: "Keinen Platz erkannt: Breite×Länge=Text, durch Komma".into(),
+                        level: Level::Warn,
+                    }];
+                }
+                self.edit_selected(|p| {
+                    if let Some(HolderSpec::Cradles(c)) = &mut p.holder {
+                        c.slots = slots.clone();
+                    }
+                    refresh_holder(p);
+                });
+            }
             ("row_stepped", _, Some(on), _) => self.edit_selected(|p| {
                 if let Some(HolderSpec::Row(r)) = &mut p.holder {
                     r.stepped = on;
@@ -1082,7 +1158,32 @@ impl DrawerPanel {
                         enabled: true,
                     },
                 ));
-                rows.push(row("Form", shape_select("sel_row_shape", r.shape)));
+                rows.push(row(
+                    "Halterung",
+                    Node::Select {
+                        id: "sel_row_pegs".into(),
+                        options: [
+                            ("holes", "Löcher"),
+                            ("quarter", "Stecker 1/4\" (Nüsse)"),
+                            ("three_eighths", "Stecker 3/8\" (Nüsse)"),
+                            ("half", "Stecker 1/2\" (Nüsse)"),
+                        ]
+                        .iter()
+                        .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
+                        .collect(),
+                        selected: match r.pegs {
+                            None => "holes",
+                            Some(Drive::Quarter) => "quarter",
+                            Some(Drive::ThreeEighths) => "three_eighths",
+                            Some(Drive::Half) => "half",
+                        }
+                        .into(),
+                        enabled: true,
+                    },
+                ));
+                if r.pegs.is_none() {
+                    rows.push(row("Form", shape_select("sel_row_shape", r.shape)));
+                }
                 rows.push(row("Spiel je Loch", Node::mm("sel_row_clear", r.clearance, 0.0, 5.0)));
                 rows.push(row("Stufen", check("sel_row_stepped", "hintere Reihen eine Einheit höher", r.stepped)));
                 for (k, holes) in r.rows.iter().enumerate() {
@@ -1108,6 +1209,48 @@ impl DrawerPanel {
                             enabled: r.rows.len() > 1,
                         },
                         small(format!("{} Löcher, {} × {} Zellen", r.hole_count(), r.cells[0], r.cells[1])),
+                    ]),
+                ));
+            }
+            Some(HolderSpec::Cradles(c)) => {
+                let mut options = vec![Choice { value: String::new(), label: "Satz laden …".into() }];
+                options.extend(
+                    sets()
+                        .iter()
+                        .filter(|s| matches!(s.holder, HolderSpec::Cradles(_)))
+                        .map(|s| Choice { value: s.id.into(), label: s.label.into() }),
+                );
+                rows.push(row(
+                    "Satz",
+                    Node::Select { id: "sel_row_set".into(), options, selected: String::new(), enabled: true },
+                ));
+                rows.push(row(
+                    "Titel (graviert)",
+                    Node::TextInput {
+                        id: "sel_cradle_title".into(),
+                        value: c.title.clone().unwrap_or_default(),
+                        hint: Some("vorne am Halter".into()),
+                        multiline: false,
+                        enabled: true,
+                    },
+                ));
+                rows.push(row(
+                    "Plätze",
+                    Node::TextInput {
+                        id: "sel_cradle_slots".into(),
+                        value: cradle_text(&c.slots),
+                        hint: Some("Breite×Länge=Text je Platz, durch Komma".into()),
+                        multiline: false,
+                        enabled: true,
+                    },
+                ));
+                rows.push(row("Neigung (°)", Node::mm("sel_cradle_angle", c.angle, 0.0, 30.0)));
+                rows.push(row("Spiel", Node::mm("sel_cradle_clear", c.clearance, 0.0, 5.0)));
+                rows.push(row(
+                    "Stufen",
+                    Node::row(vec![
+                        check("sel_cradle_stepped", "jeder Platz weiter rechts eine Einheit höher", c.stepped),
+                        small(format!("{} Plätze, {} × {} Zellen", c.slots.len(), c.cells[0], c.cells[1])),
                     ]),
                 ));
             }

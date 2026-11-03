@@ -2,8 +2,9 @@
 //! test of bins with different air to the baseplate.
 
 use super::Part;
-use super::kernel::{Solid, cuboid, cylinder, polygon_prism, rrect_prism, subtract, swept, translate, union};
+use super::kernel::{Solid, Vec3, cuboid, cylinder, polygon_prism, rrect_prism, subtract, swept, translate, union};
 use super::text;
+use crate::model::Drive;
 use crate::profile::Profile;
 use crate::spec::*;
 
@@ -69,7 +70,41 @@ pub fn parts(p: &Profile) -> Vec<Part> {
         out.push(fit_bin(*gap, i as u32 + 1, p));
     }
     out.extend(connector_pair(p));
+    out.push(peg_bar(p));
     out
+}
+
+/// Undersizes tried by the peg bar, mm below the drive square.
+pub const PEG_UNDERSIZES: [f64; 3] = [0.2, 0.3, 0.4];
+
+/// A bar with three pegs per drive, each a little narrower than the drive square, the drive
+/// and the undersize engraved in front of it: which one a socket slides on and still holds.
+pub fn peg_bar(p: &Profile) -> Part {
+    let pitch = 20.0;
+    let n = Drive::ALL.len() * PEG_UNDERSIZES.len();
+    let (w, d, h) = (n as f64 * pitch + 4.0, 32.0, 3.0);
+    let mut parts = vec![translate(&rrect_prism(w, d, 2.0, h, p.seg), [w / 2.0, d / 2.0, 0.0])];
+    let mut labels = Vec::new();
+    let mut i = 0;
+    for drive in Drive::ALL {
+        for under in PEG_UNDERSIZES {
+            let x = 2.0 + (i as f64 + 0.5) * pitch;
+            let side = drive.square() - under;
+            let c = (side / 2.0 - 0.8).max(1.0);
+            let corners =
+                |r: f64, z: f64| [[-r, -r], [r, -r], [r, r], [-r, r]].map(|[dx, dy]| Vec3::new(x + dx, 20.0 + dy, z));
+            let mut pts: Vec<Vec3> = corners(side / 2.0, h - 1.0).to_vec();
+            pts.extend(corners(side / 2.0, h + PEG_H - 0.8));
+            pts.extend(corners(c, h + PEG_H));
+            parts.push(Solid::hull(&pts));
+            let label = format!("{} -{}", drive.label().trim_end_matches('"'), crate::names::mm(under));
+            let height = text::fit_height(&label, 3.0, pitch - 2.0);
+            let body = text::text_solid(&label, height, text::stroke_for(height), 0.6 + 1.0);
+            labels.push(translate(&body, [x - text::text_width(&label, height) / 2.0, 4.0, h - 0.6]));
+            i += 1;
+        }
+    }
+    Part::new("kalibrierung_stecker.stl".into(), subtract(union(parts), labels))
 }
 
 /// Two slabs of plate floor to try the dovetail connector: "a" carries the tab on its right
