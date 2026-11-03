@@ -933,7 +933,7 @@ impl DrawerPanel {
                 id: i.to_string(),
                 cells: vec![
                     b.name.clone(),
-                    format!("{:.1} × {:.1} × {:.1}", b.size[0], b.size[1], b.size[2]),
+                    size_text(b.size, 1, "×"),
                     b.quantity.to_string(),
                     if s.project.bed.fits(b.size[0], b.size[1]) { "✓".into() } else { "zu groß".into() },
                 ],
@@ -944,8 +944,8 @@ impl DrawerPanel {
             columns: vec![
                 TableColumn { title: "Teil".into(), width: None, numeric: false },
                 TableColumn { title: "mm".into(), width: None, numeric: false },
-                TableColumn { title: "Anzahl".into(), width: Some(60.0), numeric: true },
-                TableColumn { title: "Bett".into(), width: Some(60.0), numeric: false },
+                TableColumn { title: "Stk.".into(), width: Some(36.0), numeric: true },
+                TableColumn { title: "Bett".into(), width: Some(52.0), numeric: false },
             ],
             rows,
             selected: s.selected_part.map(|i| i.to_string()),
@@ -1931,6 +1931,28 @@ impl GuestPanel for DrawerPanel {
                     style: meshgrove_plugin_api::ui::TextStyle::Strong,
                 });
                 right.push(self.parts(&s, p));
+                // The whole name and the exact size of the part picked in the table, which
+                // a narrow column cuts short.
+                right.push(match s.selected_part.and_then(|i| p.parts.get(i)) {
+                    Some(b) => Node::Label {
+                        text: format!(
+                            "{}\n{} mm · {} Stück · {}",
+                            b.name,
+                            size_text(b.size, 2, " × "),
+                            b.quantity,
+                            if s.project.bed.fits(b.size[0], b.size[1]) {
+                                format!("passt aufs Bett ({})", s.project.bed.name)
+                            } else {
+                                format!("zu groß für {}", s.project.bed.name)
+                            }
+                        ),
+                        style: TextStyle::Small,
+                    },
+                    None => Node::Label {
+                        text: "Ein Teil anklicken für Name, Maße und Vorschau auf dem Druckbett.".into(),
+                        style: TextStyle::Small,
+                    },
+                });
             }
             Some(Err(e)) => left.push(Node::Notice { level: Level::Error, text: e.clone() }),
             None => {}
@@ -2161,4 +2183,13 @@ impl GuestPanel for DrawerPanel {
     fn snapshot(&self) -> String {
         guest::json(&*self.state.borrow())
     }
+}
+
+/// A part's size as "41.5×83.5×46.4": up to `decimals` places, trailing zeros dropped.
+fn size_text(size: [f64; 3], decimals: usize, sep: &str) -> String {
+    size.map(|v| {
+        let t = format!("{v:.decimals$}");
+        if t.contains('.') { t.trim_end_matches('0').trim_end_matches('.').to_string() } else { t }
+    })
+    .join(sep)
 }
