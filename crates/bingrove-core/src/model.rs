@@ -922,6 +922,28 @@ pub struct Mount {
     pub connectors: bool,
 }
 
+/// What the floor of a plate looks like.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlateStyle {
+    /// A cross cut out of every cell's floor, leaving the four corner pads: light and quick.
+    #[default]
+    Skeleton,
+    /// The whole floor: stiffer, screws anywhere, magnets below everywhere.
+    Full,
+}
+
+/// Everything the plate's geometry depends on besides the grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PlateBuild {
+    pub floor: PlateFloor,
+    pub style: PlateStyle,
+    pub mount: Mount,
+    /// Magnet pockets in the underside of the pads, for steel surfaces and tool carts.
+    pub magnets_below: bool,
+}
+
 /// How a drawer's plate is laid out.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -929,6 +951,8 @@ pub struct PlateOptions {
     pub kind: Kind,
     pub cover: Cover,
     pub mount: Mount,
+    pub style: PlateStyle,
+    pub magnets_below: bool,
     /// Plate = drawer minus this, per axis.
     pub clearance: f64,
     pub align: [Align; 2],
@@ -950,6 +974,8 @@ impl Default for PlateOptions {
             kind: Kind::Drawer,
             cover: Cover::Exact,
             mount: Mount::default(),
+            style: PlateStyle::Skeleton,
+            magnets_below: false,
             clearance: CLEARANCE,
             align: [Align::Center; 2],
             edge_threshold: 10.0,
@@ -958,6 +984,20 @@ impl Default for PlateOptions {
             split: None,
             cells: None,
             rim: 1.0,
+        }
+    }
+}
+
+impl PlateOptions {
+    /// What the plate is built with: an open frame holds neither screws, connectors nor magnets
+    /// below.
+    pub fn build(&self) -> PlateBuild {
+        let floored = self.floor != PlateFloor::Open;
+        PlateBuild {
+            floor: self.floor,
+            style: self.style,
+            mount: if floored { self.mount } else { Mount::default() },
+            magnets_below: floored && self.magnets_below,
         }
     }
 }

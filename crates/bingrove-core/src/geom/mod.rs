@@ -40,7 +40,7 @@ pub fn part(plan: &Plan, index: usize, p: &Profile) -> Part {
     match &plan.parts[index].part {
         PartSpec::Plate { piece } => {
             let pieces = std::slice::from_ref(&plan.pieces[*piece]);
-            baseplate::pieces_of(&plan.grid, &plan.claims, pieces, plan.floor, plan.mount, p).pop().expect("one piece")
+            baseplate::pieces_of(&plan.grid, &plan.claims, pieces, plan.plate, p).pop().expect("one piece")
         }
         PartSpec::Bin { spec, extents, edge_mode } => {
             let mut spec = spec.clone();
@@ -87,8 +87,7 @@ pub fn assemble(plan: &Plan, parts: &[Part], meshes: &[TriMesh]) -> TriMesh {
 
 /// Every part of the plan, the plate computed once for all its pieces.
 pub fn all_parts(plan: &Plan, p: &Profile) -> Vec<Part> {
-    let mut plates =
-        baseplate::pieces_of(&plan.grid, &plan.claims, &plan.pieces, plan.floor, plan.mount, p).into_iter();
+    let mut plates = baseplate::pieces_of(&plan.grid, &plan.claims, &plan.pieces, plan.plate, p).into_iter();
     (0..plan.parts.len())
         .map(|i| match plan.parts[i].part {
             PartSpec::Plate { .. } => plates.next().expect("one solid per piece"),

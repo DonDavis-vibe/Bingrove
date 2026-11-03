@@ -9,7 +9,7 @@ use bingrove_core::catalog::{cradle_cells, holes_grid, rings_grid, row_cells, se
 use bingrove_core::grid::Zone;
 use bingrove_core::model::{
     Align, BinSpec, Cover, CradleSlot, Cutout, DrawerProject, Drive, EdgeMode, HolderSpec, HoleShape, Kind, Placement,
-    PlateFloor, RoundItem, RowHole, Side, VSlot,
+    PlateFloor, PlateStyle, RoundItem, RowHole, Side, VSlot,
 };
 use bingrove_core::names::mm;
 use bingrove_core::plan::{PartSpec, Plan, plan};
@@ -672,6 +672,22 @@ impl DrawerPanel {
                             PlateFloor::Magnets => "magnets",
                         },
                     ),
+                ),
+                row(
+                    "Boden",
+                    Node::row(vec![
+                        select(
+                            "style",
+                            &[("skeleton", "skelettiert (Pads)"), ("full", "voll")],
+                            if o.style == PlateStyle::Full { "full" } else { "skeleton" },
+                        ),
+                        Node::Checkbox {
+                            id: "magnets_below".into(),
+                            label: "Magnete von unten".into(),
+                            checked: has_floor && o.magnets_below,
+                            enabled: has_floor,
+                        },
+                    ]),
                 ),
                 row(
                     "Befestigung",
@@ -2028,6 +2044,11 @@ impl GuestPanel for DrawerPanel {
                                 _ => PlateFloor::Open,
                             }
                         }
+                        ("style", _) => {
+                            o.style =
+                                if text.as_deref() == Some("full") { PlateStyle::Full } else { PlateStyle::Skeleton }
+                        }
+                        ("magnets_below", _) => o.magnets_below = value.as_bool().unwrap_or(false),
                         ("screws", _) => o.mount.screws = value.as_bool().unwrap_or(false),
                         ("connectors", _) => o.mount.connectors = value.as_bool().unwrap_or(false),
                         ("printer", _) => s.project.bed = crate::bed_of(text.as_deref()),

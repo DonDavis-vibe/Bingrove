@@ -61,13 +61,22 @@ from sliding around.
   its hole, with sets to load (sockets on 1/4", 3/8" and 1/2" drives, metric and inch, hex keys,
   drills, standing screwdrivers) and stepped rows; **slots** for cards, swatches, coin cells and
   blades.
+- **More holders**: sockets on square **pegs** by drive (1/4", 3/8", 1/2"; whatever the
+  socket's outside), **cradles** with sloped, stepped beds for extension bars, ratchets and
+  files, **V-slots** for pliers, scissors and wrenches (on a ramp, sorted by size), rows of
+  holes **leaning back** for pens and hex keys, **rings** for bottles, spray cans and spools;
+  every one with sets to load and its sizes editable.
+- **Bin features**: scoop and label shelf on any wall, an open front, finger notches in the
+  divider walls, a slanted window in the front wall, and a **push-on lid** with the stacking
+  lip on top, so bins stack on it.
 - **Engraving**: a stroke font (Hershey Simplex) cuts text into the label shelf or the front
   wall of a bin and titles into holders.
 - **Surfaces**: a plate for a workbench or desk that is the grid itself, cells left free where
-  nothing stands, with a solid floor, countersunk M4 screw holes and dovetail connectors
-  between the pieces.
+  nothing stands, with a solid floor (skeleton or full), countersunk M4 screw holes, dovetail
+  connectors between the pieces and magnet pockets underneath for steel surfaces.
 - **Calibration pieces**: a magnet-hole ladder labelled with its diameters, a fit test with
-  three bins of different clearance, and a connector pair, to dial in a printer.
+  three bins of different clearance, a connector pair and a bar of socket pegs, to dial in a
+  printer.
 - **Output**: one STL per distinct part with quantities, 3MF files with the parts arranged per
   print bed, the assembled drawer as 3MF to look at, and a `*.gridfinity.json` project file that
   reopens the drawer.
@@ -155,10 +164,12 @@ until that crate is published.
 
 ## Status
 
-Working: planning, edge bins, compartment suggestions, holders with their own sizes and sets,
-engraving, surfaces with screws and connectors, cutouts (including the silhouette of a library
-model), calibration, STL/3MF/project export, CLI, plugin tools and panel. Coming: a case with a
-lid, wall patterns and lite bins, half-grid, a browser build, concave silhouettes.
+Working: planning, edge bins, compartment suggestions, holders with their own sizes and sets
+(holes, pegs, rows, cradles, V-slots, slots, rings, troughs, tape), bin features and lids,
+engraving, surfaces with screws, connectors and magnets below, cutouts (including the
+silhouette of a library model), calibration, STL/3MF/project export, CLI, plugin tools and
+panel. Coming: a case with a lid, irregular (L-shaped) bins, wall patterns and lite bins,
+sliding lids, half-grid, a browser build, concave silhouettes.
 
 ## License
 

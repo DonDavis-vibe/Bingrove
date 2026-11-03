@@ -62,13 +62,23 @@ nicht rutscht.
   Größe vor ihrem Loch graviert, mit Sätzen zum Laden (Nüsse 1/4", 3/8", 1/2" metrisch und
   zöllig, Inbus, Bohrer, Schraubendreher stehend) und gestuften Reihen; **Schlitze** für Karten,
   Swatches, Knopfzellen und Sägeblätter.
+- **Weitere Halter**: Nüsse auf Vierkant-**Steckern** je Antrieb (1/4″, 3/8″, 1/2″; egal, wie die
+  Nuss außen aussieht), **Wiegen** mit geneigten, gestuften Betten für Verlängerungen, Ratschen
+  und Feilen, **V-Schlitze** für Zangen, Scheren und Schlüssel (auf einer Rampe, nach Größe
+  sortiert), nach hinten **geneigte** Lochreihen für Stifte und Inbus, **Ringe** für Flaschen,
+  Spraydosen und Rollen; alle mit Sätzen zum Laden und änderbaren Maßen.
+- **Bin-Ausstattung**: Griffmulde und Label-Lasche an jeder Wand, offene Front,
+  Fingerausschnitte in den Trennwänden, ein schräges Fenster in der Frontwand und ein
+  **Aufsteckdeckel** mit Stapelrand oben, so dass Bins darauf stapeln.
 - **Gravur**: eine Strichschrift (Hershey Simplex) schreibt Text in die Label-Lasche oder die
   Frontwand eines Bins und Titel auf Halter.
 - **Flächen**: eine Platte für Werkbank oder Tisch, die das Raster selbst ist, Zellen bleiben
-  frei, wo nichts steht; mit festem Boden, gesenkten M4-Schraublöchern und
-  Schwalbenschwanz-Verbindern zwischen den Teilen.
+  frei, wo nichts steht; mit festem Boden (skelettiert oder voll), gesenkten
+  M4-Schraublöchern, Schwalbenschwanz-Verbindern zwischen den Teilen und Magnettaschen von
+  unten für Blechflächen.
 - **Kalibrierteile**: eine Magnetloch-Leiter mit eingravierten Durchmessern, ein Passungstest
-  mit drei Bins unterschiedlicher Luft und ein Verbinder-Paar, um einen Drucker einzustellen.
+  mit drei Bins unterschiedlicher Luft, ein Verbinder-Paar und ein Riegel mit Nuss-Steckern, um
+  einen Drucker einzustellen.
 - **Ausgabe**: eine STL je Teileart mit Stückzahl, 3MF-Dateien mit den Teilen pro Druckbett
   angeordnet, der Zusammenbau als 3MF zum Anschauen und eine `*.gridfinity.json`-Projektdatei,
   die die Schublade wieder öffnet.
@@ -158,10 +168,12 @@ bis das Crate veröffentlicht ist.
 
 ## Stand
 
-Funktioniert: Planung, Randbins, Fächer-Vorschläge, Halter mit eigenen Maßen und Sätzen, Gravur,
-Flächen mit Schrauben und Verbindern, Ausschnitte (auch die Silhouette eines
-Bibliotheksmodells), Kalibrierung, STL/3MF/Projekt-Export, CLI, Plugin-Tools und -Panel. Kommt:
-Koffer mit Deckel, Wandmuster und Lite-Bins, Halbraster, ein Browser-Build, konkave Silhouetten.
+Funktioniert: Planung, Randbins, Fächer-Vorschläge, Halter mit eigenen Maßen und Sätzen
+(Löcher, Stecker, Reihen, Wiegen, V-Schlitze, Schlitze, Ringe, Rinnen, Tape), Bin-Ausstattung
+und Deckel, Gravur, Flächen mit Schrauben, Verbindern und Magneten von unten, Ausschnitte (auch
+die Silhouette eines Bibliotheksmodells), Kalibrierung, STL/3MF/Projekt-Export, CLI,
+Plugin-Tools und -Panel. Kommt: Koffer mit Deckel, unregelmäßige (L-förmige) Bins, Wandmuster
+und Lite-Bins, Schiebedeckel, Halbraster, ein Browser-Build, konkave Silhouetten.
 
 ## Lizenz
 

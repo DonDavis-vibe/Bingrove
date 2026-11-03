@@ -7,13 +7,13 @@ use super::kernel::{
     Solid, Vec3, cuboid, cuboid_centred, cylinder, polygon_prism, rrect_prism, subtract, swept, translate, union,
 };
 use crate::grid::Grid;
-use crate::model::{Mount, PlateFloor, PlateSpec, Side};
+use crate::model::{Mount, PlateBuild, PlateFloor, PlateSpec, PlateStyle, Side};
 use crate::plan::{EdgeClaims, PlatePiece};
 use crate::profile::Profile;
 use crate::spec::*;
 
 /// The whole plate in plate coordinates: front-left corner at the origin, bottom at z = 0.
-pub fn plate(grid: &Grid, claims: &EdgeClaims, floor: PlateFloor, p: &Profile) -> Solid {
+pub fn plate(grid: &Grid, claims: &EdgeClaims, build: PlateBuild, p: &Profile) -> Solid {
     let seg = p.seg;
     let m = &p.magnet;
     let [nx, ny] = grid.cells;
@@ -36,11 +36,17 @@ pub fn plate(grid: &Grid, claims: &EdgeClaims, floor: PlateFloor, p: &Profile) -
         for &(cx, cy) in &centres {
             let cell = swept(GRID, GRID, BP_R, &BP_PROFILE[..BP_PROFILE.len() - 1], (cx, cy), seg);
             cuts.push(translate(&cell, [0.0, 0.0, fl]));
-            cuts.push(translate(&cross, [cx, cy, fl / 2.0]));
-            if floor == PlateFloor::Magnets {
-                for sx in [-1.0, 1.0] {
-                    for sy in [-1.0, 1.0] {
-                        cuts.push(translate(&hole, [cx + sx * m.pos, cy + sy * m.pos, fl - m.h]));
+            if build.style == PlateStyle::Skeleton {
+                cuts.push(translate(&cross, [cx, cy, fl / 2.0]));
+            }
+            for sx in [-1.0, 1.0] {
+                for sy in [-1.0, 1.0] {
+                    let (x, y) = (cx + sx * m.pos, cy + sy * m.pos);
+                    if build.floor == PlateFloor::Magnets {
+                        cuts.push(translate(&hole, [x, y, fl - m.h]));
+                    }
+                    if build.magnets_below {
+                        cuts.push(translate(&hole, [x, y, -1.0]));
                     }
                 }
             }
@@ -112,18 +118,11 @@ pub fn plate(grid: &Grid, claims: &EdgeClaims, floor: PlateFloor, p: &Profile) -
 /// The plate cut into `pieces`, each moved to the origin. With a floor, `mount` adds
 /// countersunk screw holes at the outer corner pads of every piece and dovetail connectors along
 /// the cut lines: a tab on the left (front) piece, its pocket in the right (back) one.
-pub fn pieces_of(
-    grid: &Grid,
-    claims: &EdgeClaims,
-    pieces: &[PlatePiece],
-    floor: PlateFloor,
-    mount: Mount,
-    p: &Profile,
-) -> Vec<Part> {
-    let whole = plate(grid, claims, floor, p);
+pub fn pieces_of(grid: &Grid, claims: &EdgeClaims, pieces: &[PlatePiece], build: PlateBuild, p: &Profile) -> Vec<Part> {
+    let whole = plate(grid, claims, build, p);
     let h = grid.height();
     let fl = grid.floor;
-    let mount = if fl > 0.0 { mount } else { Mount::default() };
+    let mount = if fl > 0.0 { build.mount } else { Mount::default() };
     let has = |row: usize, col: usize| pieces.iter().any(|q| q.row == row && q.col == col);
     pieces
         .iter()
@@ -146,7 +145,7 @@ pub fn pieces_of(
             }
             let lo = solid.bounding_box().min;
             let solid = solid.translate(Vec3::new(-lo.x, -lo.y, 0.0));
-            let mut part = Part::new(crate::names::baseplate(piece.row, piece.col, piece.cells, floor, mount), solid);
+            let mut part = Part::new(crate::names::baseplate(piece.row, piece.col, piece.cells, build), solid);
             part.origin = [lo.x, lo.y];
             part
         })
@@ -227,5 +226,5 @@ pub fn pieces(spec: &PlateSpec, p: &Profile) -> Vec<Part> {
     let claims = EdgeClaims { sides: Default::default(), corners: [false; 4] };
     let pieces = crate::plan::plate_pieces(&grid, grid.margins, &spec.split);
     let floor = if spec.magnets { PlateFloor::Magnets } else { PlateFloor::Open };
-    pieces_of(&grid, &claims, &pieces, floor, Mount::default(), p)
+    pieces_of(&grid, &claims, &pieces, PlateBuild { floor, ..PlateBuild::default() }, p)
 }

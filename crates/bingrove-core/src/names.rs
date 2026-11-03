@@ -2,22 +2,28 @@
 //! and folders keep their names.
 
 use crate::model::{
-    BinSpec, DividerMode, EdgeMode, HolderSpec, LidSpec, MagnetMode, Mount, PlateFloor, Side, TapeSpec,
+    BinSpec, DividerMode, EdgeMode, HolderSpec, LidSpec, MagnetMode, PlateBuild, PlateFloor, PlateStyle, Side, TapeSpec,
 };
 
-pub fn baseplate(row: usize, col: usize, cells: [u32; 2], floor: PlateFloor, mount: Mount) -> String {
+pub fn baseplate(row: usize, col: usize, cells: [u32; 2], build: PlateBuild) -> String {
     let col = char::from(b'A' + col as u8);
     let mut name = format!("baseplate_{}{col}_{}x{}", row + 1, cells[0], cells[1]);
-    match floor {
+    match build.floor {
         PlateFloor::Open => {}
         PlateFloor::Solid => name += "_boden",
         PlateFloor::Magnets => name += "_magnete",
     }
-    if floor != PlateFloor::Open {
-        if mount.screws {
+    if build.floor != PlateFloor::Open {
+        if build.style == PlateStyle::Full {
+            name += "_voll";
+        }
+        if build.magnets_below {
+            name += "_magnete_unten";
+        }
+        if build.mount.screws {
             name += "_schrauben";
         }
-        if mount.connectors {
+        if build.mount.connectors {
             name += "_verbinder";
         }
     }
@@ -156,18 +162,24 @@ pub fn tape(t: &TapeSpec) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Mount;
 
     #[test]
     fn names_match_the_python_script() {
-        assert_eq!(baseplate(0, 1, [2, 4], PlateFloor::Open, Mount::default()), "baseplate_1B_2x4.stl");
-        assert_eq!(baseplate(1, 0, [5, 3], PlateFloor::Magnets, Mount::default()), "baseplate_2A_5x3_magnete.stl");
-        let mount = Mount { screws: true, connectors: true };
-        assert_eq!(baseplate(0, 0, [5, 3], PlateFloor::Solid, mount), "baseplate_1A_5x3_boden_schrauben_verbinder.stl");
+        let build = |floor: PlateFloor, mount: Mount| PlateBuild { floor, mount, ..PlateBuild::default() };
+        assert_eq!(baseplate(0, 1, [2, 4], build(PlateFloor::Open, Mount::default())), "baseplate_1B_2x4.stl");
         assert_eq!(
-            baseplate(0, 0, [5, 3], PlateFloor::Open, mount),
-            "baseplate_1A_5x3.stl",
-            "an open frame holds nothing"
+            baseplate(1, 0, [5, 3], build(PlateFloor::Magnets, Mount::default())),
+            "baseplate_2A_5x3_magnete.stl"
         );
+        let mount = Mount { screws: true, connectors: true };
+        assert_eq!(
+            baseplate(0, 0, [5, 3], build(PlateFloor::Solid, mount)),
+            "baseplate_1A_5x3_boden_schrauben_verbinder.stl"
+        );
+        let full =
+            PlateBuild { style: PlateStyle::Full, magnets_below: true, ..build(PlateFloor::Solid, Mount::default()) };
+        assert_eq!(baseplate(0, 0, [5, 3], full), "baseplate_1A_5x3_boden_voll_magnete_unten.stl");
         let b = BinSpec { cells: [2, 1], units: 9, dividers: [2, 1], ..BinSpec::default() };
         assert_eq!(bin(&b), "bin_2x1_9u_2x1fach.stl");
         let b = BinSpec { cells: [1, 1], magnets: MagnetMode::Corners, lip: false, ..BinSpec::default() };

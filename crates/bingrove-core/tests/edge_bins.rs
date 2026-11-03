@@ -40,7 +40,7 @@ fn assert_assembles(plan: &Plan) {
         let mesh = part.mesh().unwrap();
         assert!(mesh.is_closed(), "{} is not watertight", part.name);
     }
-    let plate = baseplate::plate(&plan.grid, &plan.claims, plan.floor, &profile);
+    let plate = baseplate::plate(&plan.grid, &plan.claims, plan.plate, &profile);
     let bins = placed_bins(plan, &profile);
     let [w, d] = plan.grid.plate;
     for (i, (name, b)) in bins.iter().enumerate() {
@@ -75,7 +75,7 @@ fn a_mounted_surface_assembles_from_its_pieces() {
     let plan = plan(&project).unwrap();
     assert_eq!(plan.pieces.len(), 2, "{:?}", plan.split);
     assert!(plan.parts[0].name.ends_with("_boden_schrauben_verbinder.stl"), "{}", plan.parts[0].name);
-    let pieces = baseplate::pieces_of(&plan.grid, &plan.claims, &plan.pieces, plan.floor, plan.mount, &profile);
+    let pieces = baseplate::pieces_of(&plan.grid, &plan.claims, &plan.pieces, plan.plate, &profile);
     for part in &pieces {
         assert!(part.mesh().unwrap().is_closed(), "{} is not watertight", part.name);
     }
@@ -94,6 +94,42 @@ fn a_mounted_surface_assembles_from_its_pieces() {
     let v_plain: f64 = all_parts(&plan_plain, &profile).iter().map(|p| p.solid.volume()).sum();
     let v_mount: f64 = pieces.iter().map(|p| p.solid.volume()).sum();
     assert!(v_mount < v_plain - 100.0, "screw holes missing: {v_mount} vs {v_plain}");
+}
+
+#[test]
+fn full_floor_and_magnets_below() {
+    use bingrove_core::model::{Kind, PlateStyle};
+    let profile = Profile::default();
+    let project = DrawerProject {
+        drawer: DrawerSpec { name: "Platte".into(), width: 126.0, depth: 84.0, height: 50.0 },
+        options: PlateOptions { kind: Kind::Surface, floor: PlateFloor::Solid, ..PlateOptions::default() },
+        ..DrawerProject::default()
+    };
+    let volume = |options: PlateOptions| {
+        let plan = plan_for(&project, options);
+        let parts = all_parts(&plan, &profile);
+        assert!(parts.iter().all(|p| p.mesh().unwrap().is_closed()));
+        (plan.parts[0].name.clone(), parts.iter().map(|p| p.solid.volume()).sum::<f64>())
+    };
+    let (skeleton_name, skeleton) = volume(project.options.clone());
+    let (full_name, full) = volume(PlateOptions { style: PlateStyle::Full, ..project.options.clone() });
+    assert!(
+        skeleton_name.ends_with("_boden.stl") && full_name.ends_with("_boden_voll.stl"),
+        "{skeleton_name} {full_name}"
+    );
+    assert!(full > skeleton + 1000.0, "a full floor carries more: {full} vs {skeleton}");
+    let (below_name, below) = volume(PlateOptions { magnets_below: true, ..project.options.clone() });
+    assert!(below_name.ends_with("_magnete_unten.stl"), "{below_name}");
+    let pocket = std::f64::consts::PI * (profile.magnet.d / 2.0).powi(2) * profile.magnet.h;
+    assert!(skeleton - below > 6.0 * 4.0 * pocket * 0.8, "pockets below missing: {skeleton} -> {below}");
+    // An open frame ignores all of it.
+    let open = PlateOptions {
+        floor: PlateFloor::Open,
+        magnets_below: true,
+        style: PlateStyle::Full,
+        ..project.options.clone()
+    };
+    assert!(volume(open).0.ends_with("_1A_3x2.stl"));
 }
 
 fn plan_for(project: &DrawerProject, options: PlateOptions) -> Plan {
