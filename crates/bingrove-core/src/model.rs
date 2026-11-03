@@ -669,6 +669,21 @@ impl HolderSpec {
         self
     }
 
+    /// Asks for a height in units (`None`: from the pattern again); tape keeps its own height.
+    pub fn set_units(&mut self, units: Option<u32>) {
+        match self {
+            HolderSpec::Tape(_) => {}
+            HolderSpec::Holes(h) => h.units = units,
+            HolderSpec::Bits(b) => b.units = units,
+            HolderSpec::Troughs(t) => t.units = units,
+            HolderSpec::Row(r) => r.units = units,
+            HolderSpec::Slots(s) => s.units = units,
+            HolderSpec::Cradles(c) => c.units = units,
+            HolderSpec::VSlots(v) => v.units = units,
+            HolderSpec::Rings(r) => r.units = units,
+        }
+    }
+
     /// Height of the holder in units; tape holders have their own height (0).
     pub fn units(&self) -> u32 {
         let from_depth = |depth: f64| ((FLOOR_Z + depth + 2.0) / UNIT).ceil().max(2.0) as u32;

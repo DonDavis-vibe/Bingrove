@@ -281,6 +281,14 @@ fn cradle_text(slots: &[CradleSlot]) -> String {
         .join(", ")
 }
 
+/// Sets a placement's height: a holder keeps it as its own, so its pattern no longer decides.
+fn set_units(p: &mut Placement, units: u32) {
+    if let Some(h) = &mut p.holder {
+        h.set_units(Some(units));
+    }
+    p.bin.units = units;
+}
+
 /// After a holder changed: a row's footprint follows its holes, tape its rolls, and the bin takes
 /// the holder's cells and height.
 fn refresh_holder(p: &mut Placement) {
@@ -986,7 +994,7 @@ impl DrawerPanel {
         let on = value.as_bool();
         let text = value.as_str().map(|t| t.trim().to_owned());
         match (field, n, on, text) {
-            ("units", Some(n), ..) => self.edit_selected(|p| p.bin.units = n.clamp(1, max)),
+            ("units", Some(n), ..) => self.edit_selected(|p| set_units(p, n.clamp(1, max))),
             ("div_x", Some(n), ..) => self.edit_selected(|p| p.bin.dividers[0] = n.clamp(1, 12)),
             ("div_y", Some(n), ..) => self.edit_selected(|p| p.bin.dividers[1] = n.clamp(1, 12)),
             ("label_tab", _, Some(on), _) => self.edit_selected(|p| p.bin.label_tab = on),
@@ -1785,8 +1793,8 @@ impl DrawerPanel {
                 if let Some(i) = self.index_of(&item) {
                     let max = self.with_plan(|p| p.heights.max).unwrap_or(u32::MAX);
                     self.edit(i, |p| match action.as_str() {
-                        "taller" => p.bin.units = (p.bin.units + 1).min(max.max(1)),
-                        "lower" => p.bin.units = p.bin.units.saturating_sub(1).max(1),
+                        "taller" => set_units(p, (p.bin.units + 1).min(max.max(1))),
+                        "lower" => set_units(p, p.bin.units.saturating_sub(1).max(1)),
                         "div_x" => p.bin.dividers[0] += 1,
                         "div_y" => p.bin.dividers[1] += 1,
                         "div_none" => p.bin.dividers = [1, 1],
