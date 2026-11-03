@@ -2,22 +2,23 @@
 
 # Bingrove
 
-**Gridfinity drawer inserts that use the whole drawer.** Bingrove plans a baseplate and bins
-from a drawer's inner size, makes the files (STL per part, 3MF per print bed) and puts them on
-print lists — as a plugin for [Meshgrove](https://github.com/DonDavis-vibe/MeshGrove), from the
-command line, or through an AI such as Claude.
+**Gridfinity for drawers, workbenches and walls.** Give Bingrove a size and what should go in;
+it plans the baseplate and the bins and holders, makes the files (an STL per part, a 3MF per
+print bed) and puts them on print lists. It runs as a plugin in
+[Meshgrove](https://github.com/DonDavis-vibe/MeshGrove), from the command line, or through an AI
+such as Claude.
 
 *Deutsche Fassung: [README.de.md](README.de.md)*
 
-## The margin problem
+## Three kinds of project
 
-A 42 mm grid rarely fits a drawer. A 250 × 305 mm drawer takes a 5 × 7 grid (210 × 294 mm), which
-leaves **19.5 mm on the left and right** — a solid plate margin that holds nothing.
+### Drawer: use the whole drawer
 
-Bingrove keeps the grid where it is and lets the bins next to a wide margin reach into it
-("edge bins", *Randbins*). The inner bins stay 100 % Gridfinity, so any bin from anywhere still
-fits; only the bins at the edge are a little wider than 42 n. For that drawer the usable area goes
-from 83 % to 97 %.
+A 42 mm grid rarely fits a drawer. A 250 × 305 mm drawer takes a 5 × 7 grid and leaves
+**19.5 mm on the left and right** that hold nothing. Bingrove keeps the grid and lets the bins
+next to a wide margin reach into it (*edge bins*, `randbin_…`). The inner bins stay plain
+Gridfinity, so any bin from anywhere still fits. In that drawer the usable area goes from 83 % to
+97 %.
 
 ```
 back
@@ -33,170 +34,194 @@ back
 front
 ```
 
-Two ways to carry the overhang:
+The overhang either goes **down to the drawer floor** on a skirt (default, prints without
+supports, 4.75 mm more height), **rests** on the plate's margin (needs supports), or there are
+**no edge bins** and the margin stays plate. Margins under 10 mm (adjustable) always stay plate,
+so the insert does not slide.
 
-- **To the floor** (default): the plate ends just past the grid, the edge bin's overhang goes
-  down to the drawer floor on its own skirt. Prints without supports and gains 4.75 mm of usable
-  height in the margin.
-- **Resting**: the plate keeps its margin and the overhang rests on it. Needs supports; for
-  drawers where the plate must hold itself tight.
-- **None**: no edge bins at all. The margins stay solid plate (hollowed from below when wide
-  enough) and every bin is a plain 42 n one, as the original script made them.
+### Surface: a workbench or desk
 
-Margins narrower than a threshold (10 mm by default) stay solid plate, which keeps the insert
-from sliding around.
+The plate is the grid itself, cells × 42 mm, with no margins. Cells stay free wherever nothing
+is put. The plate gets a solid floor (skeleton or full), countersunk M4 screw holes, dovetail
+connectors between its pieces and, for steel tops, magnet pockets underneath.
+
+### Wall: parts that hang
+
+A plate on the wall with a hook in every cell. Wall parts are 3 mm shorter at the top: you put
+them in **lifted by 3 mm, let them slide down**, and the hooks keep them from being pulled
+straight off. Lift a part to take it out. Magnets help. Without hooks the parts hold by magnets
+alone, and then any bin fits.
+
+The plate is screwed on (holes in the middle of the corner cells) or hung on an **IKEA Skadis**
+board with printed hooks that slide into its top edge. Wall parts print lying on their bottom
+face, so their pockets open upwards while printing.
+
+## Install
+
+Bingrove needs Meshgrove **0.8.0 or newer**. Use 0.8.1 or newer: number fields there take a value
+only after Enter, and table columns can be widened.
+
+1. Download `bingrove.wasm` and `bingrove.wasm.sha256` from the
+   [releases](https://github.com/DonDavis-vibe/Bingrove/releases) and check the download:
+   ```bash
+   sha256sum -c bingrove.wasm.sha256
+   ```
+2. Copy `bingrove.wasm` to `~/.local/share/meshgrove/plugins/`.
+3. In Meshgrove open *Settings → Plugins*, install Bingrove and grant "AI tools" and "files into
+   the library".
+4. Open it with *Plugins ▾ → Bingrove*.
+
+To build it yourself, see [Development](#development).
+
+## Using the panel
+
+The panel has three parts:
+
+- **Left**, three tabs. *Projekt*: kind (drawer, surface, wall), name, sizes, margins and the
+  plate. *Belegung*: how many compartments you want; Bingrove offers the evenest mixes of bin
+  sizes that tile the grid ("10 × 3×1", "5 × 2×2 + 5 × 2×1", …), and one click lays them out.
+  *Ausgabe*: printer, print lists, magnet sizes. Below the tabs: the grid's summary, warnings,
+  and the buttons *Automatisch belegen* (lay out afresh), *Generieren + Druckliste* and
+  *Kalibrierteile*.
+- **Middle**, the plan as a grid editor. Drag to move, pull an edge to resize, draw new bins on
+  free cells, right-click for a menu. A click on a bin opens its settings below the grid: height,
+  compartments, label shelf, scoop, engraving, holder kind and the holder's own sizes.
+- **Right**, the 3D preview and the parts list. A click on a part shows it on the print bed, with
+  its full name and exact size underneath.
+
+**Generieren + Druckliste** writes everything to `Gridfinity/<name>` in the library and makes two
+print lists: `<name> – Teile` (each STL with its quantity) and `<name> – Druckbetten` (a 3MF per
+bed, parts arranged). One click in Meshgrove's history undoes it. The project file
+`*.gridfinity.json` reopens with "Mit Bingrove öffnen" from the gallery.
 
 ## What it makes
 
-- **Baseplate** pieces split along grid lines to fit the printer bed, open frame or with a floor
-  and magnet holes, hollowed from below in wide margins.
-- **Bins** with stacking lip, dividers (equal or on grid lines), label shelf, finger scoop,
-  magnet holes (corners or every cell) and pockets cut for particular things (box, cylinder,
-  polygon).
-- **Edge bins** on any side, including corners.
-- **Holders**: tape rolls on ring posts, batteries (AA, AAA, C, D, 18650, 21700, custom), 1/4"
-  bits, pens standing or lying, screwdrivers in troughs with a wider handle rest; hole grids
-  with your own diameter, depth, pitch, count and shape (round, hex, square) for router shanks,
-  drills and the like; **rows of holes with their own sizes**, each size engraved in front of
-  its hole, with sets to load (sockets on 1/4", 3/8" and 1/2" drives, metric and inch, hex keys,
-  drills, standing screwdrivers) and stepped rows; **slots** for cards, swatches, coin cells and
-  blades.
-- **More holders**: sockets on square **pegs** by drive (1/4", 3/8", 1/2"; whatever the
-  socket's outside), **cradles** with sloped, stepped beds for extension bars, ratchets and
-  files, **V-slots** for pliers, scissors and wrenches (on a ramp, sorted by size), rows of
-  holes **leaning back** for pens and hex keys, **rings** for bottles, spray cans and spools;
-  every one with sets to load and its sizes editable.
-- **Bin features**: scoop and label shelf on any wall, an open front, finger notches in the
-  divider walls, a slanted window in the front wall, and a **push-on lid** with the stacking
-  lip on top, so bins stack on it.
-- **Engraving**: a stroke font (Hershey Simplex) cuts text into the label shelf or the front
-  wall of a bin and titles into holders.
-- **Surfaces**: a plate for a workbench or desk that is the grid itself, cells left free where
-  nothing stands, with a solid floor (skeleton or full), countersunk M4 screw holes, dovetail
-  connectors between the pieces and magnet pockets underneath for steel surfaces.
-- **Walls**: a plate on the wall with a hook in every cell. Wall parts are 3 mm shorter at the
-  top: they go into the cells lifted, slide down onto the hooks and cannot be pulled straight
-  off until they are lifted again; magnets help. Wall bins (open boxes with compartments, an
-  open front, text), **standing holes** (leaning away from the wall, or open below so
-  screwdrivers hang through), **stepped sockets** in which extension bars lean against the wall,
-  and **V-slots** for pliers standing jaws down, with sets for all of them. The plate is screwed
-  on (holes in the middle of the corner cells) or hung on an **IKEA Skadis** board with printed
-  hooks that slide into its top edge.
-- **Calibration pieces**: a magnet-hole ladder labelled with its diameters, a fit test with
-  three bins of different clearance, a connector pair, a bar of socket pegs, and a wall plate
-  cell with three blocks of different air around the hook, to dial in a printer.
-- **Output**: one STL per distinct part with quantities, 3MF files with the parts arranged per
-  print bed, the assembled drawer as 3MF to look at, and a `*.gridfinity.json` project file that
-  reopens the drawer.
+**Plates** are cut along grid lines into pieces that fit your printer: an open frame, or with a
+floor and magnet holes. Dovetail connectors join the pieces: lay one piece onto the other's tab.
 
-## As a Meshgrove plugin
+**Bins** have a stacking lip, compartments, a label shelf and a scoop on any wall, magnet holes,
+an open front, finger notches in the dividers and a slanted window. A push-on **lid** carries the
+stacking lip on top, so another bin stands on it. Pockets can be cut for particular things: a
+box, a cylinder, a polygon, or the outline of a model from your library. Text is engraved in a
+stroke font (Hershey Simplex) on the label shelf or the front.
 
-Bingrove is a WebAssembly component (`wasm32-wasip2`) that Meshgrove runs in a sandbox. It needs
-a Meshgrove with the plugin system (0.8.0 or newer). Take `bingrove.wasm` from the
-[releases](https://github.com/DonDavis-vibe/Bingrove/releases), or build it:
+**Holders** replace a bin on its cells. Every one has sets to load and its sizes stay editable:
 
-```sh
-rustup target add wasm32-wasip2          # once
-scripts/build.sh                         # → target/plugin/bingrove.wasm
-scripts/install-into-meshgrove.sh        # copies it into Meshgrove's plugin folder
-```
+| Holder | For | You set |
+|---|---|---|
+| Hole grid | batteries, pens, router shanks, drills | diameter, depth, pitch, count, shape (round, hex, square) |
+| Row of holes | sockets, screwdrivers, drills, hex keys | a size per hole (engraved), rows, steps, tilt, or square **pegs** by drive |
+| Cradles | extension bars, ratchets, files lying | width × length per place, slope, steps |
+| V-slots | pliers, scissors, wrenches standing | thickness × depth per slot, ramp, closed back |
+| Slots | cards, SD cards, swatches, coin cells, blades | width, depth, pitch |
+| Rings | bottles, spray cans, spools | diameter, height |
+| Troughs | pens and screwdrivers lying | diameter, length, handle |
+| Bits, tape | 1/4" bits, tape rolls on posts | count, roll size |
 
-In Meshgrove: *Settings → Plugins* — install, grant "AI tools" and "files into the library" —
-then *Plugins ▾ → Bingrove*. The panel has three tabs on the left (*Projekt*: kind (drawer,
-surface or wall), sizes,
-margins, plate; *Belegung*: compartments; *Ausgabe*: printer, print lists, magnet profile),
-the plan as a grid editor in the middle (move, resize, merge, split, draw new bins on free
-cells), and the 3D preview with the parts list on the right. A click on a bin opens its
-settings under the grid: height, dividers, label shelf, scoop, engraving, holder kind and the
-holder's own sizes, cutouts. Under *Belegung* you say how many compartments you want; Bingrove
-offers the evenest mixes of bin sizes that tile the grid ("10 × 3×1", "5 × 2×2 + 5 × 2×1", …),
-one click lays the drawer out that way, and the counts per size can be shifted afterwards. **Generieren + Druckliste** writes everything into
-`Gridfinity/<drawer>` in the library and makes the print lists `<drawer> – Teile` (STL with
-quantities) and `<drawer> – Druckbetten` (3MF per bed); one click in the history undoes it.
+**Wall holders** hang on a wall plate:
 
-Project files (`*.gridfinity.json`) open with "Mit Bingrove öffnen" from the gallery.
+| Holder | For | You set |
+|---|---|---|
+| Standing holes | screwdrivers (hanging through), pens, files | diameter, depth, count, lean away from the wall |
+| Leaning sockets | extension bars, hex keys | a size per place (engraved), lean towards the wall, steps |
+| V-slots | pliers and scissors standing jaws down | thickness × depth per slot, length, closed front |
 
-### With an AI
+Sets include sockets on 1/4", 3/8" and 1/2" (metric and inch, in holes or on pegs), hex keys,
+drills, screwdrivers, extension bars, ratchets, pliers, scissors, wrenches 6–24, cans, bottles
+and spools, and the same for walls.
 
-Meshgrove's chat and its MCP server (`meshgrove-mcp`, for Claude Code, Claude Desktop, LM
-Studio …) see three tools:
+**Calibration pieces** dial in a printer before the big print: a magnet-hole ladder, a fit test
+with three bins of different clearance, a connector pair, a bar of socket pegs, and a wall cell
+with three blocks of different clearance around the hook.
+
+**Output**: an STL per distinct part with its quantity, a 3MF per print bed, the assembly as 3MF
+to look at (a wall stands up), and the project file.
+
+## With an AI
+
+Meshgrove's chat and its MCP server (`meshgrove-mcp`, for Claude Code, Claude Desktop, LM Studio
+and others) see three tools:
 
 | Tool | What it does |
 |---|---|
-| `bingrove_options` | presets, the user's printers, holder catalogue, defaults, limits |
-| `bingrove_plan` | plans a drawer without making files: grid, margins, parts, a text plan, warnings; fast enough to iterate |
-| `bingrove_generate` | makes the files and hands them to Meshgrove as a bundle with the print lists |
+| `bingrove_options` | presets, your printers, holders and sets, defaults, limits |
+| `bingrove_plan` | plans without making files: grid, parts, a text plan, warnings; fast enough to iterate |
+| `bingrove_generate` | makes the files and hands them to Meshgrove as one suggestion, with the print lists |
 
-A request like *"250 × 305 × 100 mm drawer: pens, two cable bins at the back, a 60 × 35 × 25 mm
-bit set, six 18650 cells"* becomes a plan, then a suggestion the user accepts in Meshgrove.
-*"A 600 × 300 mm bench plate with a 1/4" socket set and a row of 8 mm router bits"* is
-`kind: surface` with `set: sockets_1_4_mm` and a `holes` holder. *"A wall of 8 × 6 cells with my
-extension bars, pliers and two trays"* is `kind: wall` with the sets `wall_extensions` and
-`wall_pliers` and two bins. Photos work through the AI
-client: it reads the sizes off the picture and passes numbers.
+Some requests and what they become:
 
-## From the command line
+- *"250 × 305 × 100 mm drawer: pens, two cable bins at the back, a 60 × 35 × 25 mm bit set, six
+  18650 cells"*: a drawer with those items.
+- *"A 600 × 300 mm bench plate with a 1/4" socket set and a row of 8 mm router bits"*:
+  `kind: surface` with the set `sockets_1_4_mm` and a hole grid.
+- *"A wall of 8 × 6 cells for my extension bars, pliers and two trays"*: `kind: wall` with the
+  sets `wall_extensions` and `wall_pliers` and two bins.
 
-```sh
+Photos work through the AI client: it reads the sizes off the picture and passes numbers.
+
+## Command line
+
+The `bingrove` command plans drawers and surfaces; walls are made in the panel or through the
+tools.
+
+```bash
 cargo build --release
 target/release/bingrove presets
-target/release/bingrove drawer 250x305x100 --name Kleinkram \
-    --inhalt "Stifte:20x180x20" --inhalt "2*Kabel:bin 2x2x12" --inhalt "Bits:60x35x25" --zusammenbau
-target/release/bingrove --schublade 250x305            # the preset with its fixed layout
-target/release/bingrove drawer 600x300x100 --name Bank --flaeche --plan   # a bench plate
-target/release/bingrove bin 3 1 -d 3 1 --magnete ecken  # one bin
-target/release/bingrove tape 103 -n 2 1 -s 3            # a tape holder
+target/release/bingrove drawer 250x305x100 --name Kleinkram --inhalt "Stifte:20x180x20" --inhalt "2*Kabel:bin 2x2x12" --zusammenbau
+target/release/bingrove drawer 600x300x100 --name Bank --flaeche --plan
+target/release/bingrove bin 3 1 -d 3 1 --magnete ecken
+target/release/bingrove tape 103 -n 2 1 -s 3
 ```
 
-Output goes to `out/<name>/`. `--plan` only prints the plan.
+Files go to `out/<name>/`; `--plan` only prints the plan.
 
-## Repository
+## Development
 
 ```
 crates/bingrove-core     planning (grid, margins, split, solver, layout repair, parts list) and,
                          with the feature "geometry", the solids and STL/3MF export
 crates/bingrove-cli      the bingrove command
-crates/bingrove-plugin   the Meshgrove plugin (cdylib → bingrove.wasm)
+crates/bingrove-plugin   the Meshgrove plugin (cdylib → bingrove.wasm, its own workspace)
 assets/                  icon and banner
-scripts/                 build.sh, install-into-meshgrove.sh, check.sh
+scripts/                 build.sh, install-into-meshgrove.sh, check.sh, release-notes.sh
 ```
+
+```bash
+rustup target add wasm32-wasip2
+scripts/check.sh
+scripts/build.sh
+scripts/install-into-meshgrove.sh
+```
+
+`check.sh` runs fmt, clippy (native and wasm), the tests and the plugin build; `build.sh` writes
+`target/plugin/bingrove.wasm`, and `install-into-meshgrove.sh` copies it into Meshgrove's plugin
+folder.
+
+The plugin takes `meshgrove-plugin-api` from the Meshgrove repository, pinned to a release tag.
+To work on both at once, the comment in `crates/bingrove-plugin/Cargo.toml` shows how to point it
+at a local checkout. CI runs `check.sh` on every push; a tag `v*` builds the plugin and publishes
+it with its checksum and the changelog entry as a GitHub release. Changes per version:
+[CHANGELOG.md](CHANGELOG.md).
 
 Geometry runs on [manifold-rust](https://crates.io/crates/manifold-rust), a pure-Rust port of
-Manifold, so there is no C++ toolchain and the same code builds for the browser-sized sandbox.
-The Gridfinity profiles follow
-[gridfinity-rebuilt-openscad](https://github.com/kennetek/gridfinity-rebuilt-openscad); the
-drawer logic grew out of a Python script for two particular drawers, whose 25 parts the tests
-reproduce to ±0.01 mm.
-
-```sh
-scripts/check.sh    # fmt, clippy (native and wasm), tests, plugin build
-```
-
-The plugin depends on `meshgrove-plugin-api` straight from the Meshgrove repository, pinned to a
-commit; the comment in `crates/bingrove-plugin/Cargo.toml` shows how to point it at a local
-checkout while working on both. `.github/workflows/ci.yml` runs `check.sh`; a tag `v*` builds the
-plugin and publishes it with its checksum and the changelog entry as a GitHub pre-release.
+Manifold, so there is no C++ toolchain and the same code builds for the plugin sandbox. The
+Gridfinity profiles follow
+[gridfinity-rebuilt-openscad](https://github.com/kennetek/gridfinity-rebuilt-openscad). The
+drawer logic grew out of a Python script for two drawers, whose 25 parts the tests reproduce to
+±0.01 mm.
 
 ## Known limits
 
 - Presets describe drawers only; a workbench starts from *Art → Fläche*, a wall from *Art → Wand*.
-- Wall parts print lying on their bottom face, so round holes come out slightly oval; with hooks
-  on the plate only wall parts fit it (switch the hooks off and any bin holds by magnets).
-- Skadis hooks hang the plate by its top edge only; its slots are 40 mm apart, the grid 42 mm.
-- Bins are rectangles; L-shaped bins, wall patterns, lite bins and sliding lids are not there yet.
-- Long holders (a socket set) are not split for the print bed; the plan warns, you split the set.
-- The silhouette of a library model is its convex hull, so a concave outline gets its hollows filled.
+- Bins are rectangles. L-shaped bins, wall patterns, lite bins, sliding lids, half-grid and a
+  case with a lid are not there yet.
+- Long holders (a whole socket set) are not split for the print bed; the plan warns.
+- The outline of a library model is its convex hull, so hollows in it get filled.
+- Wall parts print on their bottom face, so round holes come out slightly oval. With hooks on
+  the plate only wall parts fit.
+- Skadis hooks hold the plate by its top edge only (the board's slots are 40 mm apart, the grid
+  42 mm).
 - The panel speaks German; the tools and this file English.
-
-## Status
-
-Working: planning, edge bins, compartment suggestions, holders with their own sizes and sets
-(holes, pegs, rows, cradles, V-slots, slots, rings, troughs, tape), bin features and lids,
-engraving, surfaces with screws, connectors and magnets below, walls with hooks, wall holders
-and Skadis hooks, cutouts (including the
-silhouette of a library model), calibration, STL/3MF/project export, CLI, plugin tools and
-panel. Coming: a case with a lid, irregular (L-shaped) bins, wall patterns and lite bins,
-sliding lids, half-grid, a browser build, concave silhouettes.
 
 ## License
 
