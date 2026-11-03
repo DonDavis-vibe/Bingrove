@@ -1,61 +1,37 @@
-//! What became of files handed to Meshgrove. Newer Meshgroves answer a bundle with a
-//! `bundle_finished` event. The plugin API this crate family is pinned to does not know that
-//! event yet, so it is read from its JSON here; older hosts never send it.
-
-use serde::Deserialize;
+//! What became of files handed to Meshgrove, in the words the panel shows. The panel turns
+//! Meshgrove's `BundleFinished` event into these types; hosts before 0.8.2 never send it.
 
 /// How Meshgrove dealt with a bundle.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(tag = "status", rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BundleOutcome {
     /// The change went through; `skipped` of its steps did nothing.
-    Applied {
-        #[serde(default)]
-        steps: u32,
-        #[serde(default)]
-        skipped: u32,
-    },
+    Applied { skipped: u32 },
     /// Waiting in the review.
     Queued,
     /// The plugin may not put files into the library; they are gone.
     Refused,
     /// Something went wrong; the library is unchanged.
-    Failed {
-        #[serde(default)]
-        error: String,
-    },
+    Failed { error: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BundleFinished {
     pub title: String,
     pub outcome: BundleOutcome,
 }
 
 impl BundleFinished {
-    /// The event in a panel event's JSON; `None` for any other event.
-    pub fn parse(event: &str) -> Option<Self> {
-        #[derive(Deserialize)]
-        struct Tagged {
-            #[serde(rename = "type")]
-            kind: String,
-            #[serde(flatten)]
-            finished: BundleFinished,
-        }
-        serde_json::from_str::<Tagged>(event).ok().filter(|t| t.kind == "bundle_finished").map(|t| t.finished)
-    }
-
     /// What to tell the user, naming the setting as Meshgrove's own language does.
     pub fn text(&self, language: &str) -> String {
         let title = &self.title;
         let german = language.starts_with("de");
         match (&self.outcome, german) {
-            (BundleOutcome::Applied { skipped: 0, .. }, true) => format!("{title} ist in der Bibliothek."),
-            (BundleOutcome::Applied { skipped: 0, .. }, false) => format!("{title} is in the library."),
-            (BundleOutcome::Applied { skipped, .. }, true) => {
+            (BundleOutcome::Applied { skipped: 0 }, true) => format!("{title} ist in der Bibliothek."),
+            (BundleOutcome::Applied { skipped: 0 }, false) => format!("{title} is in the library."),
+            (BundleOutcome::Applied { skipped }, true) => {
                 format!("{title} ist in der Bibliothek, {skipped} Schritte blieben ohne Wirkung.")
             }
-            (BundleOutcome::Applied { skipped, .. }, false) => {
+            (BundleOutcome::Applied { skipped }, false) => {
                 format!("{title} is in the library; {skipped} steps did nothing.")
             }
             (BundleOutcome::Queued, true) => format!("{title} wartet in Meshgrove auf deine Prüfung."),
@@ -76,43 +52,23 @@ impl BundleFinished {
 mod tests {
     use super::*;
 
-    fn event(outcome: &str) -> String {
-        format!(r#"{{"type":"bundle_finished","title":"Gridfinity Schublade","outcome":{outcome}}}"#)
-    }
-
-    #[test]
-    fn reads_every_outcome_as_meshgrove_writes_it() {
-        let outcome = |json: &str| BundleFinished::parse(&event(json)).unwrap().outcome;
-        assert_eq!(
-            outcome(r#"{"status":"applied","steps":56,"skipped":0}"#),
-            BundleOutcome::Applied { steps: 56, skipped: 0 }
-        );
-        assert_eq!(outcome(r#"{"status":"queued"}"#), BundleOutcome::Queued);
-        assert_eq!(outcome(r#"{"status":"refused"}"#), BundleOutcome::Refused);
-        assert_eq!(
-            outcome(r#"{"status":"failed","error":"disk full"}"#),
-            BundleOutcome::Failed { error: "disk full".into() }
-        );
-    }
-
-    #[test]
-    fn leaves_other_events_alone() {
-        assert_eq!(BundleFinished::parse(r#"{"type":"click","id":"generate"}"#), None);
-        assert_eq!(BundleFinished::parse(r#"{"type":"click","title":"x","outcome":{"status":"queued"}}"#), None);
-        assert_eq!(BundleFinished::parse(&event(r#"{"status":"something_new"}"#)), None);
-        assert_eq!(BundleFinished::parse("not json"), None);
+    fn finished(outcome: BundleOutcome) -> BundleFinished {
+        BundleFinished { title: "Gridfinity Schublade".into(), outcome }
     }
 
     #[test]
     fn a_refusal_names_the_setting_in_meshgroves_language() {
-        let done = BundleFinished::parse(&event(r#"{"status":"refused"}"#)).unwrap();
+        let done = finished(BundleOutcome::Refused);
         assert!(done.text("de").contains("„Dateien in die Bibliothek legen“"), "{}", done.text("de"));
         assert!(done.text("en").contains("\"Put files into the library\""), "{}", done.text("en"));
     }
 
     #[test]
-    fn skipped_steps_are_mentioned() {
-        let done = BundleFinished::parse(&event(r#"{"status":"applied","steps":9,"skipped":2}"#)).unwrap();
-        assert!(done.text("de").contains("2 Schritte"), "{}", done.text("de"));
+    fn says_what_happened() {
+        assert!(finished(BundleOutcome::Applied { skipped: 0 }).text("de").ends_with("ist in der Bibliothek."));
+        assert!(finished(BundleOutcome::Applied { skipped: 2 }).text("de").contains("2 Schritte"));
+        assert!(finished(BundleOutcome::Queued).text("en").contains("review"));
+        let failed = finished(BundleOutcome::Failed { error: "disk full".into() });
+        assert!(failed.text("en").ends_with("disk full"), "{}", failed.text("en"));
     }
 }

@@ -58,8 +58,9 @@ face, so their pockets open upwards while printing.
 
 ## Install
 
-Bingrove needs Meshgrove **0.8.0 or newer**. Use 0.8.1 or newer: number fields there take a value
-only after Enter, and table columns can be widened.
+Bingrove needs Meshgrove **0.8.0 or newer**. Use 0.8.2 or newer: number fields there take a value
+only after Enter, table columns can be widened, and the panel shows whether your files really
+reached the library.
 
 1. Download `bingrove.wasm` and `bingrove.wasm.sha256` from the
    [releases](https://github.com/DonDavis-vibe/Bingrove/releases) and check the download:

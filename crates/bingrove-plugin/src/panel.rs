@@ -20,8 +20,8 @@ use bingrove_core::suggest::{self, Mix};
 use meshgrove_plugin_api::guest::library;
 use meshgrove_plugin_api::guest::{self, GuestPanel, MeshData};
 use meshgrove_plugin_api::ui::{
-    Action, Choice, Effect, Event, FormRow, GridChange, GridEditor, GridItem, GridZone, JobSpec, Level, Node, Tab,
-    TableColumn, TableRow, TextStyle, Unit, View,
+    self, Action, Choice, Effect, Event, FormRow, GridChange, GridEditor, GridItem, GridZone, JobSpec, Level, Node,
+    Tab, TableColumn, TableRow, TextStyle, Unit, View,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -581,12 +581,25 @@ impl DrawerPanel {
         let bundle = result.map_or(Value::Null, |r| r["bundle"].clone());
         match serde_json::from_value::<meshgrove_plugin_api::Bundle>(bundle) {
             Ok(bundle) => {
-                // Meshgrove may still refuse it; only newer ones say so (see `event`).
+                // Meshgrove may still refuse it; 0.8.2 and newer say so (`bundle_finished`).
                 s.message = Some((Level::Info, handed_over(&bundle, &guest::info().language)));
                 vec![Effect::ApplyBundle { bundle }]
             }
             Err(e) => vec![Effect::Toast { text: e.to_string(), level: Level::Error }],
         }
+    }
+
+    /// Replaces the "handed over" line with what Meshgrove did with the files.
+    fn bundle_finished(&self, title: String, outcome: ui::BundleOutcome) {
+        let (level, outcome) = match outcome {
+            ui::BundleOutcome::Applied { skipped: 0, .. } => (Level::Success, BundleOutcome::Applied { skipped: 0 }),
+            ui::BundleOutcome::Applied { skipped, .. } => (Level::Warn, BundleOutcome::Applied { skipped }),
+            ui::BundleOutcome::Queued => (Level::Info, BundleOutcome::Queued),
+            ui::BundleOutcome::Refused => (Level::Warn, BundleOutcome::Refused),
+            ui::BundleOutcome::Failed { error } => (Level::Error, BundleOutcome::Failed { error }),
+        };
+        let text = BundleFinished { title, outcome }.text(&guest::info().language);
+        self.state.borrow_mut().message = Some((level, text));
     }
 
     fn form(&self, s: &PanelState, plan: Option<&Plan>) -> Node {
@@ -2319,17 +2332,6 @@ impl GuestPanel for DrawerPanel {
     }
 
     fn event(&self, event: String) -> String {
-        // Newer Meshgroves say what became of a bundle; older ones leave the "handed over" line.
-        if let Some(done) = BundleFinished::parse(&event) {
-            let level = match done.outcome {
-                BundleOutcome::Applied { skipped: 0, .. } => Level::Success,
-                BundleOutcome::Applied { .. } | BundleOutcome::Refused => Level::Warn,
-                BundleOutcome::Queued => Level::Info,
-                BundleOutcome::Failed { .. } => Level::Error,
-            };
-            self.state.borrow_mut().message = Some((level, done.text(&guest::info().language)));
-            return guest::effects(&self.preview_effects());
-        }
         let Ok(event) = serde_json::from_str::<Event>(&event) else { return guest::effects(&[]) };
         let mut effects = match event {
             Event::Changed { id, value } if id.starts_with("mixn:") => {
@@ -2509,6 +2511,12 @@ impl GuestPanel for DrawerPanel {
             },
             Event::HostChanged { .. } => {
                 self.changed();
+                Vec::new()
+            }
+            // Meshgrove 0.8.2 and newer say what became of a bundle; older ones leave the
+            // "handed over" line standing.
+            Event::BundleFinished { title, outcome } => {
+                self.bundle_finished(title, outcome);
                 Vec::new()
             }
             // Among the rest: the "preview" button, which only needs an event to happen.

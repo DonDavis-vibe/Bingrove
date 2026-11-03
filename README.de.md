@@ -59,8 +59,9 @@ drucken auf ihrer Unterseite liegend, ihre Taschen öffnen sich beim Druck also 
 
 ## Installieren
 
-Bingrove braucht Meshgrove **0.8.0 oder neuer**. Nimm 0.8.1 oder neuer: Dort übernehmen
-Zahlenfelder den Wert erst nach Enter, und Tabellenspalten lassen sich aufziehen.
+Bingrove braucht Meshgrove **0.8.0 oder neuer**. Nimm 0.8.2 oder neuer: Dort übernehmen
+Zahlenfelder den Wert erst nach Enter, Tabellenspalten lassen sich aufziehen, und das Panel zeigt,
+ob deine Dateien wirklich in der Bibliothek angekommen sind.
 
 1. `bingrove.wasm` und `bingrove.wasm.sha256` von den
    [Releases](https://github.com/DonDavis-vibe/Bingrove/releases) laden und den Download
