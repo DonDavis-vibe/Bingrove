@@ -8,6 +8,7 @@ pub mod grid;
 pub mod layout;
 pub mod model;
 pub mod names;
+pub mod outcome;
 pub mod plan;
 pub mod presets;
 pub mod profile;

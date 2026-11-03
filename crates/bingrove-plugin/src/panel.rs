@@ -12,6 +12,7 @@ use bingrove_core::model::{
     PlateFloor, PlateStyle, RoundItem, RowHole, Side, VSlot,
 };
 use bingrove_core::names::mm;
+use bingrove_core::outcome::{BundleFinished, BundleOutcome};
 use bingrove_core::plan::{PartSpec, Plan, plan};
 use bingrove_core::silhouette::{self, Down};
 use bingrove_core::spec::{GRID, UNIT};
@@ -580,7 +581,7 @@ impl DrawerPanel {
         let bundle = result.map_or(Value::Null, |r| r["bundle"].clone());
         match serde_json::from_value::<meshgrove_plugin_api::Bundle>(bundle) {
             Ok(bundle) => {
-                // Meshgrove may still refuse it, and the plugin does not hear about that.
+                // Meshgrove may still refuse it; only newer ones say so (see `event`).
                 s.message = Some((Level::Info, handed_over(&bundle, &guest::info().language)));
                 vec![Effect::ApplyBundle { bundle }]
             }
@@ -2318,6 +2319,17 @@ impl GuestPanel for DrawerPanel {
     }
 
     fn event(&self, event: String) -> String {
+        // Newer Meshgroves say what became of a bundle; older ones leave the "handed over" line.
+        if let Some(done) = BundleFinished::parse(&event) {
+            let level = match done.outcome {
+                BundleOutcome::Applied { skipped: 0, .. } => Level::Success,
+                BundleOutcome::Applied { .. } | BundleOutcome::Refused => Level::Warn,
+                BundleOutcome::Queued => Level::Info,
+                BundleOutcome::Failed { .. } => Level::Error,
+            };
+            self.state.borrow_mut().message = Some((level, done.text(&guest::info().language)));
+            return guest::effects(&self.preview_effects());
+        }
         let Ok(event) = serde_json::from_str::<Event>(&event) else { return guest::effects(&[]) };
         let mut effects = match event {
             Event::Changed { id, value } if id.starts_with("mixn:") => {
