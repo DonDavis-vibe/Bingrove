@@ -40,15 +40,54 @@ pub struct BinSpec {
     /// Stacking lip on top.
     pub lip: bool,
     pub magnets: MagnetMode,
-    /// Label shelf along the back wall.
+    /// Label shelf along a wall (`label_side`, the back by default).
     pub label_tab: bool,
-    /// Finger scoop along the front wall, in percent of the possible radius (0 = none).
+    pub label_side: Side,
+    /// Finger scoop in percent of the possible radius (0 = none), along the walls in
+    /// `scoop_sides` (the front when that is empty).
     pub scoop: u8,
+    pub scoop_sides: Vec<Side>,
+    /// The front wall only half as high, to reach in from the front.
+    pub open_front: bool,
+    /// Round cut-outs in the top of the divider walls, to get a finger under small things.
+    pub finger_cutouts: bool,
+    /// A slanted window in the front wall.
+    pub window: Option<Window>,
     /// Pockets for particular things, cut into a solid insert that fills the bin to the
     /// deepest pocket plus a floor.
     pub cutouts: Vec<Cutout>,
     /// Engraved on the label shelf (or the front wall without one).
     pub label_text: Option<String>,
+}
+
+/// A window cut into the front wall: `width` at the bottom, the sides slanting outwards by
+/// `angle` degrees from the vertical, the bottom at about a third of the wall's height.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Window {
+    pub width: f64,
+    pub angle: f64,
+}
+
+impl Default for Window {
+    fn default() -> Self {
+        Window { width: 20.0, angle: 20.0 }
+    }
+}
+
+impl BinSpec {
+    /// The walls that get a scoop: the listed ones, or the front.
+    pub fn scoops(&self) -> Vec<Side> {
+        if self.scoop == 0 {
+            return Vec::new();
+        }
+        if self.scoop_sides.is_empty() { vec![Side::Front] } else { self.scoop_sides.clone() }
+    }
+
+    /// Whether anything tells the bin's front from its back (such a bin is never turned).
+    pub fn has_a_front(&self) -> bool {
+        self.label_tab || self.scoop > 0 || self.open_front || self.window.is_some() || self.label_text.is_some()
+    }
 }
 
 impl Default for BinSpec {
@@ -61,7 +100,12 @@ impl Default for BinSpec {
             lip: true,
             magnets: MagnetMode::None,
             label_tab: false,
+            label_side: Side::Back,
             scoop: 0,
+            scoop_sides: vec![],
+            open_front: false,
+            finger_cutouts: false,
+            window: None,
             cutouts: vec![],
             label_text: None,
         }

@@ -90,9 +90,25 @@ fn with_options(mut name: String, b: &BinSpec) -> String {
     }
     if b.label_tab {
         name += "_label";
+        if b.label_side != Side::Back {
+            name.push(b.label_side.letter());
+        }
     }
     if b.scoop > 0 {
         name += &format!("_mulde{}", b.scoop);
+        let sides = b.scoops();
+        if sides != [Side::Front] {
+            name.extend(sides.iter().map(|s| s.letter()));
+        }
+    }
+    if b.open_front {
+        name += "_offen";
+    }
+    if b.finger_cutouts && b.dividers != [1, 1] {
+        name += "_finger";
+    }
+    if let Some(w) = &b.window {
+        name += &format!("_fenster{}", mm(w.width));
     }
     if !b.cutouts.is_empty() {
         name += &format!("_{}ausschnitt", b.cutouts.len());

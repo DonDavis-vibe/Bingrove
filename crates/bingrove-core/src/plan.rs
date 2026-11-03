@@ -181,7 +181,7 @@ pub fn bin_size(spec: &BinSpec, e: [f64; 4]) -> [f64; 3] {
 fn canonical(spec: &BinSpec, e: [f64; 4]) -> ([f64; 4], bool) {
     let turned = [e[1], e[0], e[3], e[2]];
     let key = |v: &[f64; 4]| v.map(|x| (x * 100.0).round() as i64);
-    if spec.label_tab || spec.scoop > 0 || key(&e) >= key(&turned) { (e, false) } else { (turned, true) }
+    if spec.has_a_front() || key(&e) >= key(&turned) { (e, false) } else { (turned, true) }
 }
 
 fn part_name(part: &PartSpec, pieces: &[PlatePiece], floor: PlateFloor, mount: Mount) -> String {

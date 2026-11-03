@@ -3,8 +3,8 @@
 //! skirt carries the overhang down to the drawer floor and the floor drops there.
 
 use super::Part;
-use super::kernel::{Solid, Vec3, cuboid, cylinder, rrect_prism, subtract, swept, translate, union};
-use crate::model::{BinSpec, DividerMode, EdgeMode, MagnetMode};
+use super::kernel::{Solid, Vec3, cuboid, cylinder, polygon_prism, rrect_prism, subtract, swept, translate, union};
+use crate::model::{BinSpec, DividerMode, EdgeMode, MagnetMode, Side};
 use crate::profile::Profile;
 use crate::spec::*;
 
@@ -161,15 +161,41 @@ pub fn edge_bin(b: &BinSpec, e: [f64; 4], mode: EdgeMode, rim: f64, p: &Profile)
     };
     let mut add = Vec::new();
     let mut low = Vec::new();
+    let mut fingers = Vec::new();
     let (wy, wx) =
         ([c.1 - (od - WALL) / 2.0, c.1 + (od - WALL) / 2.0], [c.0 - (ow - WALL) / 2.0, c.0 + (ow - WALL) / 2.0]);
+    let top_div = z_div + h_div;
+    // Compartment centres along each axis, where a finger notch goes into the walls crossing it.
+    let centres = |n: u32, lo: f64, hi: f64| -> Vec<f64> {
+        (0..n).map(|k| lo + (k as f64 + 0.5) * (hi - lo) / n as f64).collect()
+    };
+    let notch = |r: f64, len: f64| -> Solid {
+        // A cylinder along the wall's normal plus the slot above it up to the top.
+        cylinder(len, r, r, seg) + translate(&cuboid([len, 2.0 * r, r + 2.0], [0.0, -r, 0.0]), [0.0, 0.0, 0.0])
+    };
     for x in xs {
         add.push(span([x - WALL / 2.0, x + WALL / 2.0], wy, [z_div, z_div + h_div]));
         low.push(span([x - WALL / 2.0, x + WALL / 2.0], wy, [FLOOR - 0.01, z_div + 0.01]));
+        let r = ((wy[1] - wy[0]) / b.dividers[1] as f64 / 2.0 - 3.0).min(10.0).min((top_div - FLOOR_Z) / 2.0);
+        if r >= 3.0 {
+            for yc in centres(b.dividers[1], wy[0], wy[1]) {
+                fingers
+                    .push(translate(&notch(r, WALL + 2.0).rotate(0.0, 90.0, 0.0), [x - WALL / 2.0 - 1.0, yc, top_div]));
+            }
+        }
     }
     for y in ys {
         add.push(span(wx, [y - WALL / 2.0, y + WALL / 2.0], [z_div, z_div + h_div]));
         low.push(span(wx, [y - WALL / 2.0, y + WALL / 2.0], [FLOOR - 0.01, z_div + 0.01]));
+        let r = ((wx[1] - wx[0]) / b.dividers[0] as f64 / 2.0 - 3.0).min(10.0).min((top_div - FLOOR_Z) / 2.0);
+        if r >= 3.0 {
+            for xc in centres(b.dividers[0], wx[0], wx[1]) {
+                fingers.push(translate(
+                    &notch(r, WALL + 2.0).rotate(-90.0, 0.0, 0.0),
+                    [xc, y - WALL / 2.0 - 1.0, top_div],
+                ));
+            }
+        }
     }
     if let Some(dropped) = &dropped
         && !low.is_empty()
@@ -177,36 +203,114 @@ pub fn edge_bin(b: &BinSpec, e: [f64; 4], mode: EdgeMode, rim: f64, p: &Profile)
         add.push(union(low) ^ dropped);
     }
 
-    // Label shelf along the back wall, top flush with the body, on a 36° support.
+    // The inner faces of the four walls and how far a wall runs: (wall, span across).
+    let inner = |s: Side| -> f64 {
+        match s {
+            Side::Left => x0 + WALL,
+            Side::Right => x1 - WALL,
+            Side::Front => y0 + WALL,
+            Side::Back => y1 - WALL,
+        }
+    };
+    let along = |s: Side| -> [f64; 2] {
+        match s {
+            Side::Left | Side::Right => [y0 + WALL - 0.01, y1 - WALL + 0.01],
+            Side::Front | Side::Back => [x0 + WALL - 0.01, x1 - WALL + 0.01],
+        }
+    };
+    // Which way is "into the bin" from a wall.
+    let inward = |s: Side| -> f64 {
+        match s {
+            Side::Left | Side::Front => 1.0,
+            Side::Right | Side::Back => -1.0,
+        }
+    };
+    let room = |s: Side| -> f64 {
+        match s {
+            Side::Left | Side::Right => ow - 2.0 * WALL,
+            Side::Front | Side::Back => od - 2.0 * WALL,
+        }
+    };
+    // A point on the wall `s`, `a` along it, `t` in from it, at height `z`.
+    let at_wall = |s: Side, a: f64, t: f64, z: f64| -> Vec3 {
+        let w = inner(s) + inward(s) * t;
+        match s {
+            Side::Left | Side::Right => Vec3::new(w, a, z),
+            Side::Front | Side::Back => Vec3::new(a, w, z),
+        }
+    };
+
+    // Label shelf along a wall, top flush with the body, on a 36° support.
     if b.label_tab {
+        let side = b.label_side;
         let tan = LABEL_ANGLE.to_radians().tan();
-        let depth = LABEL_DEPTH.min((h_body - floor_at(3) - 1.0) / tan).min((od - 2.0 * WALL) / 2.0);
+        let depth = LABEL_DEPTH.min((h_body - floor_at(side as usize) - 1.0) / tan).min(room(side) / 2.0);
         if depth >= 3.0 {
-            let yw = y1 - WALL + 0.01;
-            let pts: Vec<Vec3> = [x0 + WALL - 0.01, x1 - WALL + 0.01]
+            let pts: Vec<Vec3> = along(side)
                 .into_iter()
-                .flat_map(|x| {
-                    [Vec3::new(x, yw, h_body), Vec3::new(x, yw - depth, h_body), Vec3::new(x, yw, h_body - depth * tan)]
+                .flat_map(|a| {
+                    [
+                        at_wall(side, a, -0.01, h_body),
+                        at_wall(side, a, depth, h_body),
+                        at_wall(side, a, -0.01, h_body - depth * tan),
+                    ]
                 })
                 .collect();
             add.push(Solid::hull(&pts));
         }
     }
 
-    // Finger scoop: a concave fillet along the front wall.
-    if b.scoop > 0 {
-        let zf = floor_at(2);
-        let r = (b.scoop.min(100) as f64 / 100.0 * (h_body - zf) / 2.0).min((od - 2.0 * WALL) / 3.0);
-        if r >= 2.0 {
-            let yf = y0 + WALL;
-            let fill = span([x0 + WALL - 0.01, x1 - WALL + 0.01], [yf - 0.01, yf + r], [zf - 0.01, zf + r]);
-            let round = cylinder(ow + 2.0, r, r, seg * 2).rotate(0.0, 90.0, 0.0);
-            add.push(fill - translate(&round, [x0 - 1.0, yf + r, zf + r]));
+    // Finger scoops: a concave fillet along the chosen walls.
+    for side in b.scoops() {
+        if side == Side::Front && b.open_front {
+            continue;
         }
+        let zf = floor_at(side as usize);
+        let r = (b.scoop.min(100) as f64 / 100.0 * (h_body - zf) / 2.0).min(room(side) / 3.0);
+        if r < 2.0 {
+            continue;
+        }
+        let [a0, a1] = along(side);
+        let lo = at_wall(side, a0, -0.01, zf - 0.01);
+        let hi = at_wall(side, a1, r, zf + r);
+        let fill = span([lo.x.min(hi.x), lo.x.max(hi.x)], [lo.y.min(hi.y), lo.y.max(hi.y)], [zf - 0.01, zf + r]);
+        let axis = at_wall(side, a0 - 1.0, r, zf + r);
+        let round = match side {
+            Side::Front | Side::Back => cylinder(a1 - a0 + 2.0, r, r, seg * 2).rotate(0.0, 90.0, 0.0),
+            Side::Left | Side::Right => cylinder(a1 - a0 + 2.0, r, r, seg * 2).rotate(-90.0, 0.0, 0.0),
+        };
+        add.push(fill - translate(&round, [axis.x, axis.y, axis.z]));
     }
     if !add.is_empty() {
         add.insert(0, solid);
         solid = union(add);
+    }
+
+    // An open front: the front wall (lip and all) comes down to half the height between the
+    // corners; a window: a slanted opening in it.
+    let z_open = FLOOR_Z + (h_body - FLOOR_Z) / 2.0;
+    if b.open_front {
+        solid -= span([x0 + BIN_R, x1 - BIN_R], [y0 - 1.0, y0 + WALL + 0.01], [z_open, top + 2.0]);
+    } else if let Some(win) = &b.window {
+        let z_lo = FLOOR_Z + (h_body - FLOOR_Z) / 3.0;
+        let half = (win.width / 2.0).min((ow - 2.0 * BIN_R) / 2.0 - 1.0);
+        if half > 2.0 {
+            let spread = (top + 2.0 - z_lo) * win.angle.to_radians().tan();
+            let pts = vec![
+                [c.0 - half, z_lo],
+                [c.0 + half, z_lo],
+                [c.0 + half + spread, top + 2.0],
+                [c.0 - half - spread, top + 2.0],
+            ];
+            let t = WALL + 1.5;
+            let cut = polygon_prism(&pts, 0.0, t, 8).rotate(90.0, 0.0, 0.0);
+            solid -= translate(&cut, [0.0, y0 + WALL + 0.5, 0.0]);
+        }
+    }
+
+    // Finger cut-outs: a round notch in the top of every divider wall, one per compartment.
+    if b.finger_cutouts && !fingers.is_empty() {
+        solid = subtract(solid, fingers);
     }
 
     let hole = magnet_hole(p);
@@ -233,8 +337,9 @@ pub fn edge_bin(b: &BinSpec, e: [f64; 4], mode: EdgeMode, rim: f64, p: &Profile)
                 super::text::engrave(solid, text, [ow / 2.0, od - WALL - depth / 2.0, h_body], height.max(2.0), 0.6)
             }
             None => {
-                let height = super::text::fit_height(text, (h_body - FLOOR_Z - 3.0).min(6.0), room_x);
-                let z = FLOOR_Z + (h_body - FLOOR_Z) / 2.0;
+                let wall_top = if b.open_front { z_open } else { h_body };
+                let height = super::text::fit_height(text, (wall_top - FLOOR_Z - 3.0).min(6.0), room_x);
+                let z = FLOOR_Z + (wall_top - FLOOR_Z) / 2.0;
                 super::text::engrave_front(solid, text, [ow / 2.0, 0.0, z], height.max(2.0), 0.5)
             }
         };

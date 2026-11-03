@@ -132,7 +132,9 @@ fn set_holder(p: &mut Placement, id: &str) {
 }
 
 /// The holder fields of the selection form ("sel_" stripped) that carry numbers.
-const HOLDER_FIELDS: [&str; 31] = [
+const HOLDER_FIELDS: [&str; 33] = [
+    "window_w",
+    "window_angle",
     "cradle_angle",
     "cradle_clear",
     "row_tilt",
@@ -169,6 +171,13 @@ const HOLDER_FIELDS: [&str; 31] = [
 /// Sets one numeric holder field of placement `p`; a changed hole size makes the item a custom one.
 fn holder_field(p: &mut Placement, field: &str, v: f64) {
     let whole = |v: f64| v.round().max(0.0) as u32;
+    if let Some(w) = &mut p.bin.window {
+        match field {
+            "window_w" => w.width = v.max(6.0),
+            "window_angle" => w.angle = v.clamp(0.0, 45.0),
+            _ => {}
+        }
+    }
     match (&mut p.holder, field) {
         (Some(HolderSpec::Holes(h)), "hole_d" | "hole_h") => {
             let (d, height) = h.item.size();
@@ -284,6 +293,24 @@ fn refresh_holder(p: &mut Placement) {
     if let Some(h) = &p.holder {
         p.bin.cells = h.cells();
         p.bin.units = h.units();
+    }
+}
+
+fn side_value(side: Side) -> &'static str {
+    match side {
+        Side::Back => "back",
+        Side::Front => "front",
+        Side::Left => "left",
+        Side::Right => "right",
+    }
+}
+
+fn side_of(text: &str) -> Side {
+    match text {
+        "front" => Side::Front,
+        "left" => Side::Left,
+        "right" => Side::Right,
+        _ => Side::Back,
     }
 }
 
@@ -806,6 +833,9 @@ impl DrawerPanel {
             Action { id: "div_none".into(), label: "Fächer entfernen".into() },
             Action { id: "label_tab".into(), label: "Label-Lasche an/aus".into() },
             Action { id: "scoop".into(), label: "Griffmulde an/aus".into() },
+            Action { id: "open_front".into(), label: "Vorne offen an/aus".into() },
+            Action { id: "fingers".into(), label: "Fingerausschnitte an/aus".into() },
+            Action { id: "window".into(), label: "Fenster vorne an/aus".into() },
             Action { id: "edges".into(), label: "Rand nutzen an/aus".into() },
             Action { id: "holder_none".into(), label: "Halter: keiner (normaler Bin)".into() },
             Action { id: "holder_aa".into(), label: "Halter: AA-Zellen".into() },
@@ -937,7 +967,24 @@ impl DrawerPanel {
             ("div_x", Some(n), ..) => self.edit_selected(|p| p.bin.dividers[0] = n.clamp(1, 12)),
             ("div_y", Some(n), ..) => self.edit_selected(|p| p.bin.dividers[1] = n.clamp(1, 12)),
             ("label_tab", _, Some(on), _) => self.edit_selected(|p| p.bin.label_tab = on),
-            ("scoop", _, Some(on), _) => self.edit_selected(|p| p.bin.scoop = if on { 60 } else { 0 }),
+            ("label_side", _, _, Some(t)) => self.edit_selected(|p| p.bin.label_side = side_of(&t)),
+            (f, _, Some(on), _) if f.starts_with("scoop_") => {
+                let side = side_of(&f[6..]);
+                self.edit_selected(|p| {
+                    let mut sides = p.bin.scoops();
+                    sides.retain(|s| *s != side);
+                    if on {
+                        sides.push(side);
+                    }
+                    p.bin.scoop = if sides.is_empty() { 0 } else { p.bin.scoop.max(60) };
+                    p.bin.scoop_sides = sides;
+                })
+            }
+            ("open_front", _, Some(on), _) => self.edit_selected(|p| p.bin.open_front = on),
+            ("fingers", _, Some(on), _) => self.edit_selected(|p| p.bin.finger_cutouts = on),
+            ("window", _, Some(on), _) => {
+                self.edit_selected(|p| p.bin.window = on.then(bingrove_core::model::Window::default))
+            }
             ("edges", _, Some(on), _) => self.edit_selected(|p| p.edges.off = [!on; 4]),
             ("label", _, _, Some(t)) => self.edit_selected(|p| p.label = (!t.is_empty()).then(|| t.clone())),
             ("holder", _, _, Some(id)) => self.edit_selected(|p| set_holder(p, &id)),
@@ -1143,14 +1190,50 @@ impl DrawerPanel {
                     int("sel_div_y", first.bin.dividers[1], 1, 12),
                 ]),
             ));
+            let side_select = |id: &str, side: Side| Node::Select {
+                id: id.into(),
+                options: [("back", "hinten"), ("front", "vorne"), ("left", "links"), ("right", "rechts")]
+                    .iter()
+                    .map(|(v, l)| Choice { value: (*v).into(), label: (*l).into() })
+                    .collect(),
+                selected: side_value(side).into(),
+                enabled: true,
+            };
+            let mut label = vec![check("sel_label_tab", "Label-Lasche", first.bin.label_tab)];
+            if first.bin.label_tab {
+                label.push(side_select("sel_label_side", first.bin.label_side));
+            }
+            rows.push(row("Label", Node::row(label)));
+            let scoops = first.bin.scoops();
+            rows.push(row(
+                "Griffmulde",
+                Node::row(
+                    [(Side::Front, "vorne"), (Side::Back, "hinten"), (Side::Left, "links"), (Side::Right, "rechts")]
+                        .iter()
+                        .map(|(side, l)| check(&format!("sel_scoop_{}", side_value(*side)), l, scoops.contains(side)))
+                        .collect(),
+                ),
+            ));
             let mut extras = vec![
-                check("sel_label_tab", "Label-Lasche", first.bin.label_tab),
-                check("sel_scoop", "Griffmulde", first.bin.scoop > 0),
+                check("sel_open_front", "vorne offen", first.bin.open_front),
+                check("sel_fingers", "Fingerausschnitte", first.bin.finger_cutouts),
+                check("sel_window", "Fenster vorne", first.bin.window.is_some()),
             ];
             if p.grid.zones.contains(&Zone::Edge) {
                 extras.push(check("sel_edges", "Rand nutzen", !first.edges.off.iter().all(|&o| o)));
             }
             rows.push(row("Ausstattung", Node::row(extras)));
+            if let Some(w) = &first.bin.window {
+                rows.push(row(
+                    "Fenster",
+                    Node::row(vec![
+                        Node::mm("sel_window_w", w.width, 6.0, 200.0),
+                        small("breit".into()),
+                        Node::mm("sel_window_angle", w.angle, 0.0, 45.0),
+                        small("° schräg".into()),
+                    ]),
+                ));
+            }
             rows.push(row(
                 "Gravur",
                 Node::TextInput {
@@ -1684,6 +1767,9 @@ impl DrawerPanel {
                         "div_none" => p.bin.dividers = [1, 1],
                         "label_tab" => p.bin.label_tab = !p.bin.label_tab,
                         "scoop" => p.bin.scoop = if p.bin.scoop > 0 { 0 } else { 60 },
+                        "open_front" => p.bin.open_front = !p.bin.open_front,
+                        "fingers" => p.bin.finger_cutouts = !p.bin.finger_cutouts,
+                        "window" => p.bin.window = p.bin.window.is_none().then(bingrove_core::model::Window::default),
                         "edges" => {
                             let all_off = p.edges.off.iter().all(|&o| o);
                             p.edges.off = [!all_off; 4];

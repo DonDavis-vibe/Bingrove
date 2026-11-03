@@ -101,6 +101,43 @@ fn plan_for(project: &DrawerProject, options: PlateOptions) -> Plan {
 }
 
 #[test]
+fn sides_open_front_fingers_and_window() {
+    use bingrove_core::model::{Side, Window};
+    let profile = Profile::default();
+    let base = BinSpec { cells: [2, 2], units: 6, dividers: [2, 2], ..BinSpec::default() };
+    let volume = |b: &BinSpec| {
+        let part = bin::bin(b, &profile);
+        let mesh = part.mesh().unwrap();
+        assert!(mesh.is_closed(), "{} is not watertight", part.name);
+        (part.name, mesh.volume(), mesh.bbox())
+    };
+    let (name, v0, bb0) = volume(&base);
+    assert_eq!(name, "bin_2x2_6u_2x2fach.stl");
+    // A scoop on the left adds about what one on the front adds; a label on the right its shelf.
+    let (name, vf, _) = volume(&BinSpec { scoop: 60, ..base.clone() });
+    assert_eq!(name, "bin_2x2_6u_2x2fach_mulde60.stl");
+    let (name, vl, _) = volume(&BinSpec { scoop: 60, scoop_sides: vec![Side::Left], ..base.clone() });
+    assert_eq!(name, "bin_2x2_6u_2x2fach_mulde60L.stl");
+    assert!((vl - vf).abs() < (vf - v0) * 0.1, "left {vl} vs front {vf} over plain {v0}");
+    let (name, vr, _) = volume(&BinSpec { label_tab: true, label_side: Side::Right, ..base.clone() });
+    assert_eq!(name, "bin_2x2_6u_2x2fach_labelR.stl");
+    let (_, vb, _) = volume(&BinSpec { label_tab: true, ..base.clone() });
+    assert!((vr - vb).abs() < (vb - v0) * 0.1, "right {vr} vs back {vb}");
+    // An open front takes the front wall down; the bin stays as wide and deep.
+    let (name, vo, bbo) = volume(&BinSpec { open_front: true, ..base.clone() });
+    assert_eq!(name, "bin_2x2_6u_2x2fach_offen.stl");
+    assert!(vo < v0 - 500.0, "open front: {vo} vs {v0}");
+    assert_eq!((bbo.0, bbo.1[0], bbo.1[1]), (bb0.0, bb0.1[0], bb0.1[1]));
+    // Finger notches and a window take material too.
+    let (name, vn, _) = volume(&BinSpec { finger_cutouts: true, ..base.clone() });
+    assert_eq!(name, "bin_2x2_6u_2x2fach_finger.stl");
+    assert!(vn < v0 - 50.0, "fingers: {vn} vs {v0}");
+    let (name, vw, _) = volume(&BinSpec { window: Some(Window::default()), ..base.clone() });
+    assert_eq!(name, "bin_2x2_6u_2x2fach_fenster20.stl");
+    assert!(vw < v0 - 200.0 && vw > vo, "window: {vw} between open {vo} and plain {v0}");
+}
+
+#[test]
 fn to_floor_drawer_assembles() {
     let plan = plan(&small(PlateOptions::default())).unwrap();
     assert_assembles(&plan);
