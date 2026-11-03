@@ -580,7 +580,8 @@ impl DrawerPanel {
         let bundle = result.map_or(Value::Null, |r| r["bundle"].clone());
         match serde_json::from_value::<meshgrove_plugin_api::Bundle>(bundle) {
             Ok(bundle) => {
-                s.message = Some((Level::Success, bundle.summary.clone().unwrap_or_default()));
+                // Meshgrove may still refuse it, and the plugin does not hear about that.
+                s.message = Some((Level::Info, handed_over(&bundle, &guest::info().language)));
                 vec![Effect::ApplyBundle { bundle }]
             }
             Err(e) => vec![Effect::Toast { text: e.to_string(), level: Level::Error }],
@@ -2526,6 +2527,22 @@ impl GuestPanel for DrawerPanel {
 
     fn snapshot(&self) -> String {
         guest::json(&*self.state.borrow())
+    }
+}
+
+/// What the panel says after a job: the files went to Meshgrove, which decides about them, and
+/// where to look if nothing arrives. Names the setting as Meshgrove's own language does.
+fn handed_over(bundle: &meshgrove_plugin_api::Bundle, language: &str) -> String {
+    let files = bundle.files.len();
+    let lists = bundle.lists.iter().map(|l| l.name.as_str()).collect::<Vec<_>>().join(", ");
+    if language.starts_with("de") {
+        format!(
+            "{files} Dateien und die Listen {lists} an Meshgrove übergeben. Erscheint nichts in der Bibliothek, unter Einstellungen → Plugins → Bingrove „Dateien in die Bibliothek legen“ erlauben."
+        )
+    } else {
+        format!(
+            "{files} files and the lists {lists} handed to Meshgrove. If nothing appears in the library, allow \"Put files into the library\" under Settings → Plugins → Bingrove."
+        )
     }
 }
 

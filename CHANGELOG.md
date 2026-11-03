@@ -3,6 +3,12 @@
 Bingrove is a Meshgrove plugin: a release is one `bingrove.wasm`, installed under *Settings →
 Plugins*. It needs a Meshgrove with the plugin system (0.8.0 or newer).
 
+## Unreleased
+
+- Panel: after generating it says the files were handed to Meshgrove, and which setting to
+  check if nothing arrives, instead of a success message that also showed when Meshgrove had
+  refused them.
+
 ## 0.4.0 – 2026-11-03
 
 Walls.
