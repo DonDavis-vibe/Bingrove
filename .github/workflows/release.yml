@@ -1,7 +1,7 @@
 name: Release
 
-# A tag v* publishes the plugin: the .wasm, its checksum and the notes of that version from
-# CHANGELOG.md, as a pre-release while Bingrove is below 1.0.
+# A tag v* publishes the plugin as a full release: the .wasm, its checksum and the notes of that
+# version from CHANGELOG.md.
 on:
   push:
     tags: ["v*"]
@@ -29,11 +29,16 @@ jobs:
           sha256sum bingrove.wasm > bingrove.wasm.sha256
           cat bingrove.wasm.sha256
       - name: Notes from the changelog
-        run: scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > notes.md
+        id: notes
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          scripts/release-notes.sh "$version" > notes.md
       - uses: softprops/action-gh-release@v2
         with:
+          name: Bingrove ${{ steps.notes.outputs.version }}
           body_path: notes.md
-          prerelease: true
+          prerelease: false
           files: |
             target/plugin/bingrove.wasm
             target/plugin/bingrove.wasm.sha256
