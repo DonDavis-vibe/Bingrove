@@ -830,6 +830,122 @@ impl WallVSlotSpec {
     }
 }
 
+/// Hooks standing out of a wall part at its bottom, their tips turned up: one arm, a pair (a
+/// fork with `gap` between the arms, for a hammer's handle), or with `saddle` one wide arm over
+/// the whole part for cables and hoses.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WallHookSpec {
+    pub arms: u32,
+    /// Between two neighbouring arms; 0 spreads them evenly over the part.
+    pub gap: f64,
+    /// How far the arms reach out of the wall.
+    pub reach: f64,
+    /// How high the tips rise above the arms.
+    pub tip: f64,
+    /// Width of an arm across the wall.
+    pub arm_w: f64,
+    /// Thickness of an arm, up the wall.
+    pub thick: f64,
+    pub saddle: bool,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+    pub title: Option<String>,
+}
+
+impl Default for WallHookSpec {
+    fn default() -> Self {
+        WallHookSpec {
+            arms: 1,
+            gap: 0.0,
+            reach: 40.0,
+            tip: 10.0,
+            arm_w: 12.0,
+            thick: 8.0,
+            saddle: false,
+            cells: [1, 1],
+            units: None,
+            title: None,
+        }
+    }
+}
+
+impl WallHookSpec {
+    /// Width, depth out of the wall and height of the arms together.
+    pub fn block(&self) -> [f64; 3] {
+        let n = self.arms.max(1) as f64;
+        let width = if self.saddle {
+            self.arm_w.max(30.0)
+        } else {
+            n * self.arm_w + (n - 1.0) * self.gap.max(self.arm_w) + 2.0 * crate::spec::WALL
+        };
+        [width, self.reach, self.thick + self.tip]
+    }
+
+    pub fn fit(mut self) -> Self {
+        let [w, _, h] = self.block();
+        // Room on the back plate above the arms for the title.
+        self.cells = [wall_cells_x(w), wall_cells_y(h + 8.0)];
+        self
+    }
+}
+
+/// Thin-walled tubes standing up a wall part, open at the top, for long things: rulers, long
+/// bits, brushes, spray cans. `open_bottom` lets them reach through.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WallQuiverSpec {
+    /// Per tube: the thing's diameter, how deep it stands in, the text above it.
+    pub tubes: Vec<RowHole>,
+    /// The tubes' wall.
+    pub wall: f64,
+    pub open_bottom: bool,
+    pub clearance: f64,
+    pub cells: [u32; 2],
+    pub units: Option<u32>,
+    pub title: Option<String>,
+}
+
+impl Default for WallQuiverSpec {
+    fn default() -> Self {
+        WallQuiverSpec {
+            tubes: vec![RowHole { d: 14.0, depth: Some(60.0), label: String::new() }; 4],
+            wall: 1.6,
+            open_bottom: false,
+            clearance: 1.5,
+            cells: [1, 1],
+            units: None,
+            title: None,
+        }
+    }
+}
+
+impl WallQuiverSpec {
+    /// Width a tube takes across, its wall shared with the next one.
+    pub fn place(&self, tube: &RowHole) -> f64 {
+        tube.d + self.clearance + self.wall
+    }
+
+    /// Height of a tube above the part's bottom.
+    pub fn height(&self, tube: &RowHole) -> f64 {
+        tube.depth() + if self.open_bottom { 0.0 } else { crate::spec::FLOOR }
+    }
+
+    /// Width, depth out of the wall and height of the tubes together.
+    pub fn block(&self) -> [f64; 3] {
+        let width = self.tubes.iter().map(|t| self.place(t)).sum::<f64>() + self.wall;
+        let depth = self.tubes.iter().map(|t| t.d + self.clearance + 2.0 * self.wall + 0.5).fold(0.0, f64::max);
+        let height = self.tubes.iter().map(|t| self.height(t)).fold(0.0, f64::max);
+        [width, depth, height]
+    }
+
+    pub fn fit(mut self) -> Self {
+        let [w, _, h] = self.block();
+        self.cells = [wall_cells_x(w), wall_cells_y(h + 3.0)];
+        self
+    }
+}
+
 /// Special holders that replace a plain bin on its cells.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -849,6 +965,8 @@ pub enum HolderSpec {
     WallCradles(WallCradleSpec),
     #[serde(rename = "wall_vslots", alias = "wall_v_slots")]
     WallVSlots(WallVSlotSpec),
+    WallHooks(WallHookSpec),
+    WallQuivers(WallQuiverSpec),
 }
 
 /// Air around hex bits (across flats) and a 1/4" bit's size.
@@ -871,12 +989,21 @@ impl HolderSpec {
             HolderSpec::WallHoles(w) => w.cells,
             HolderSpec::WallCradles(w) => w.cells,
             HolderSpec::WallVSlots(w) => w.cells,
+            HolderSpec::WallHooks(w) => w.cells,
+            HolderSpec::WallQuivers(w) => w.cells,
         }
     }
 
     /// Whether the holder hangs on a wall (made lying on its bottom face, hooks in its feet).
     pub fn is_wall(&self) -> bool {
-        matches!(self, HolderSpec::WallHoles(_) | HolderSpec::WallCradles(_) | HolderSpec::WallVSlots(_))
+        matches!(
+            self,
+            HolderSpec::WallHoles(_)
+                | HolderSpec::WallCradles(_)
+                | HolderSpec::WallVSlots(_)
+                | HolderSpec::WallHooks(_)
+                | HolderSpec::WallQuivers(_)
+        )
     }
 
     /// The holder with another footprint (tape decides its own).
@@ -894,6 +1021,8 @@ impl HolderSpec {
             HolderSpec::WallHoles(w) => w.cells = cells,
             HolderSpec::WallCradles(w) => w.cells = cells,
             HolderSpec::WallVSlots(w) => w.cells = cells,
+            HolderSpec::WallHooks(w) => w.cells = cells,
+            HolderSpec::WallQuivers(w) => w.cells = cells,
         }
         self
     }
@@ -913,6 +1042,8 @@ impl HolderSpec {
             HolderSpec::WallHoles(w) => w.units = units,
             HolderSpec::WallCradles(w) => w.units = units,
             HolderSpec::WallVSlots(w) => w.units = units,
+            HolderSpec::WallHooks(w) => w.units = units,
+            HolderSpec::WallQuivers(w) => w.units = units,
         }
     }
 
@@ -939,6 +1070,8 @@ impl HolderSpec {
             HolderSpec::WallHoles(w) => w.units.unwrap_or_else(|| wall_units(w.block()[1])),
             HolderSpec::WallCradles(w) => w.units.unwrap_or_else(|| wall_units(w.block()[1])),
             HolderSpec::WallVSlots(w) => w.units.unwrap_or_else(|| wall_units(w.block()[1])),
+            HolderSpec::WallHooks(w) => w.units.unwrap_or_else(|| wall_units(w.block()[1])),
+            HolderSpec::WallQuivers(w) => w.units.unwrap_or_else(|| wall_units(w.block()[1])),
         }
     }
 
@@ -1012,6 +1145,17 @@ impl HolderSpec {
                 let title = w.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
                 let what = title.unwrap_or_else(|| format!("{}", w.slots.len()));
                 format!("vschlitze_{what}{}", if w.closed_front { "_zu" } else { "" })
+            }
+            HolderSpec::WallHooks(w) => {
+                let title = w.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
+                let what =
+                    title.unwrap_or_else(|| if w.saddle { "buegel".into() } else { format!("{}", w.arms.max(1)) });
+                format!("haken_{what}_{}", crate::names::mm(w.reach))
+            }
+            HolderSpec::WallQuivers(w) => {
+                let title = w.title.as_deref().map(crate::names::slug).filter(|s| !s.is_empty());
+                let what = title.unwrap_or_else(|| format!("{}", w.tubes.len()));
+                format!("koecher_{what}{}", if w.open_bottom { "_durch" } else { "" })
             }
         }
     }

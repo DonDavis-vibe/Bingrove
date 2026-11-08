@@ -5,7 +5,8 @@ use serde::Serialize;
 
 use crate::model::{
     BIT_ACROSS_FLATS, BIT_CLEARANCE, CradleSlot, CradleSpec, Drive, HolderSpec, HoleShape, HolesSpec, RingSpec,
-    RoundItem, RowHole, RowSpec, SlotSpec, TroughSpec, VSlot, VSlotSpec, WallCradleSpec, WallHolesSpec, WallVSlotSpec,
+    RoundItem, RowHole, RowSpec, SlotSpec, TroughSpec, VSlot, VSlotSpec, WallCradleSpec, WallHolesSpec, WallHookSpec,
+    WallQuiverSpec, WallVSlotSpec,
 };
 use crate::spec::{GRID, WALL, bin_outer};
 
@@ -115,6 +116,14 @@ pub fn capacity(h: &HolderSpec) -> u32 {
         HolderSpec::WallHoles(w) => w.count.iter().product(),
         HolderSpec::WallCradles(w) => w.slots.len() as u32,
         HolderSpec::WallVSlots(w) => w.slots.len() as u32,
+        HolderSpec::WallHooks(w) => {
+            if w.saddle {
+                1
+            } else {
+                w.arms.max(1)
+            }
+        }
+        HolderSpec::WallQuivers(w) => w.tubes.len() as u32,
     }
 }
 
@@ -127,7 +136,10 @@ pub fn for_count(h: HolderSpec, count: u32) -> HolderSpec {
             let rows = n.div_ceil(8);
             HolderSpec::WallHoles(WallHolesSpec { count: [n.div_ceil(rows), rows], ..w }.fit())
         }
-        HolderSpec::WallCradles(_) | HolderSpec::WallVSlots(_) => h,
+        HolderSpec::WallCradles(_)
+        | HolderSpec::WallVSlots(_)
+        | HolderSpec::WallHooks(_)
+        | HolderSpec::WallQuivers(_) => h,
         _ => {
             let cells = cells_for(&h, count);
             h.with_cells(cells)
@@ -292,6 +304,16 @@ pub fn catalog() -> Vec<CatalogEntry> {
             id: "wall_vslots",
             label: "Wand: V-Schlitze (Zangen hängend)",
             holder: HolderSpec::WallVSlots(WallVSlotSpec::default().fit()),
+        },
+        CatalogEntry {
+            id: "wall_hooks",
+            label: "Wand: Haken und Bügel",
+            holder: HolderSpec::WallHooks(WallHookSpec::default().fit()),
+        },
+        CatalogEntry {
+            id: "wall_quivers",
+            label: "Wand: Köcher (Röhren für Langes)",
+            holder: HolderSpec::WallQuivers(WallQuiverSpec::default().fit()),
         },
         CatalogEntry {
             id: "row",
@@ -746,6 +768,74 @@ fn wall_sets() -> Vec<HolderSet> {
         ),
         drive: None,
     });
+    let hook = |spec: WallHookSpec| HolderSpec::WallHooks(spec.fit());
+    out.push(HolderSet {
+        id: "wall_hook_single",
+        label: "Wand: Einzelhaken",
+        holder: hook(WallHookSpec::default()),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "wall_hook_double",
+        label: "Wand: Doppelhaken",
+        holder: hook(WallHookSpec { arms: 2, reach: 50.0, ..WallHookSpec::default() }),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "wall_hammer",
+        label: "Wand: Hammer (Gabel)",
+        holder: hook(WallHookSpec {
+            arms: 2,
+            gap: 28.0,
+            reach: 45.0,
+            tip: 6.0,
+            title: Some("Hammer".into()),
+            ..WallHookSpec::default()
+        }),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "wall_cable_saddle",
+        label: "Wand: Kabelbügel",
+        holder: hook(WallHookSpec {
+            saddle: true,
+            arm_w: 70.0,
+            reach: 70.0,
+            tip: 15.0,
+            thick: 10.0,
+            title: Some("Kabel".into()),
+            ..WallHookSpec::default()
+        }),
+        drive: None,
+    });
+    let quiver = |d: f64, depth: f64, n: usize, title: &str| {
+        let tubes = vec![RowHole { d, depth: Some(depth), label: String::new() }; n];
+        HolderSpec::WallQuivers(WallQuiverSpec { tubes, title: Some(title.into()), ..WallQuiverSpec::default() }.fit())
+    };
+    out.push(HolderSet {
+        id: "wall_quiver_pens",
+        label: "Wand: Stifte (Köcher)",
+        holder: quiver(14.0, 60.0, 5, "Stifte"),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "wall_quiver_brushes",
+        label: "Wand: Pinsel (Köcher)",
+        holder: quiver(25.0, 70.0, 4, "Pinsel"),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "wall_quiver_long_bits",
+        label: "Wand: lange Bits (Köcher)",
+        holder: quiver(10.0, 50.0, 8, "Bits"),
+        drive: None,
+    });
+    out.push(HolderSet {
+        id: "wall_spray_cans",
+        label: "Wand: Spraydosen Ø 66 (Köcher)",
+        holder: quiver(66.0, 60.0, 2, "Spray"),
+        drive: None,
+    });
     out
 }
 
@@ -786,6 +876,16 @@ pub fn english_label(id: &str) -> Option<String> {
         "wall_holes" => "Wall: standing holes",
         "wall_cradles" => "Wall: cradles (bars lean against the wall)",
         "wall_vslots" => "Wall: V-slots (pliers)",
+        "wall_hooks" => "Wall: hooks and brackets",
+        "wall_quivers" => "Wall: quivers (tubes for long things)",
+        "wall_hook_single" => "Wall: single hook",
+        "wall_hook_double" => "Wall: double hook",
+        "wall_hammer" => "Wall: hammer (fork)",
+        "wall_cable_saddle" => "Wall: cable bracket",
+        "wall_quiver_pens" => "Wall: pens (quiver)",
+        "wall_quiver_brushes" => "Wall: brushes (quiver)",
+        "wall_quiver_long_bits" => "Wall: long bits (quiver)",
+        "wall_spray_cans" => "Wall: spray cans Ø 66 (quiver)",
         "row" => "Row of holes (your own sizes)",
         "extensions" => "Extensions 1/4\"–1/2\" (cradles)",
         "ratchets" => "Ratchets (cradles, stepped)",

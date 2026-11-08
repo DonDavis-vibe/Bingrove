@@ -124,6 +124,10 @@ fn holder_label(h: &HolderSpec) -> String {
         HolderSpec::WallVSlots(w) => {
             w.title.clone().unwrap_or_else(|| tf!("{} V-Schlitze", "{} V-slots", w.slots.len()))
         }
+        HolderSpec::WallHooks(w) => w.title.clone().unwrap_or_else(|| {
+            if w.saddle { tr("Bügel", "Bracket").into() } else { tf!("{} Haken", "{} hooks", w.arms.max(1)) }
+        }),
+        HolderSpec::WallQuivers(w) => w.title.clone().unwrap_or_else(|| tf!("{} Röhren", "{} tubes", w.tubes.len())),
     }
 }
 
@@ -141,7 +145,16 @@ fn set_holder(p: &mut Placement, id: &str) {
 }
 
 /// The holder fields of the selection form ("sel_" stripped) that carry numbers.
-const HOLDER_FIELDS: [&str; 44] = [
+const HOLDER_FIELDS: [&str; 53] = [
+    "wk_arms",
+    "wk_gap",
+    "wk_reach",
+    "wk_tip",
+    "wk_arm_w",
+    "wk_thick",
+    "wq_depth",
+    "wq_wall",
+    "wq_clear",
     "wh_d",
     "wh_depth",
     "wh_nx",
@@ -257,6 +270,19 @@ fn holder_field(p: &mut Placement, field: &str, v: f64) {
         }
         (Some(HolderSpec::WallVSlots(w)), "wv_len") => w.length = v.clamp(10.0, 150.0),
         (Some(HolderSpec::WallVSlots(w)), "wv_clear") => w.clearance = v.clamp(0.0, 5.0),
+        (Some(HolderSpec::WallHooks(w)), "wk_arms") => w.arms = whole(v).clamp(1, 6),
+        (Some(HolderSpec::WallHooks(w)), "wk_gap") => w.gap = v.clamp(0.0, 150.0),
+        (Some(HolderSpec::WallHooks(w)), "wk_reach") => w.reach = v.clamp(15.0, 150.0),
+        (Some(HolderSpec::WallHooks(w)), "wk_tip") => w.tip = v.clamp(0.0, 60.0),
+        (Some(HolderSpec::WallHooks(w)), "wk_arm_w") => w.arm_w = v.clamp(5.0, 200.0),
+        (Some(HolderSpec::WallHooks(w)), "wk_thick") => w.thick = v.clamp(3.0, 30.0),
+        (Some(HolderSpec::WallQuivers(w)), "wq_depth") => {
+            for tube in &mut w.tubes {
+                tube.depth = Some(v.clamp(10.0, 300.0));
+            }
+        }
+        (Some(HolderSpec::WallQuivers(w)), "wq_wall") => w.wall = v.clamp(0.8, 4.0),
+        (Some(HolderSpec::WallQuivers(w)), "wq_clear") => w.clearance = v.clamp(0.0, 5.0),
         _ => {}
     }
     refresh_holder(p);
@@ -334,6 +360,8 @@ fn refresh_holder(p: &mut Placement) {
         Some(HolderSpec::WallHoles(w)) => w.cells = w.clone().fit().cells,
         Some(HolderSpec::WallCradles(w)) => w.cells = w.clone().fit().cells,
         Some(HolderSpec::WallVSlots(w)) => w.cells = w.clone().fit().cells,
+        Some(HolderSpec::WallHooks(w)) => w.cells = w.clone().fit().cells,
+        Some(HolderSpec::WallQuivers(w)) => w.cells = w.clone().fit().cells,
         _ => {}
     }
     if let Some(h) = &p.holder {
@@ -409,6 +437,8 @@ fn holder_id(p: &Placement) -> &'static str {
                 HolderSpec::WallHoles(_) => "wall_holes",
                 HolderSpec::WallCradles(_) => "wall_cradles",
                 HolderSpec::WallVSlots(_) => "wall_vslots",
+                HolderSpec::WallHooks(_) => "wall_hooks",
+                HolderSpec::WallQuivers(_) => "wall_quivers",
                 _ => "custom",
             };
             catalog().into_iter().find(|c| c.holder.clone().with_cells(h.cells()) == *h).map_or(fallback, |c| c.id)
@@ -1092,6 +1122,14 @@ impl DrawerPanel {
                 id: "holder_wall_vslots".into(),
                 label: tr("Halter: V-Schlitze (Zangen)", "Holder: V-slots (pliers)").into(),
             },
+            Action {
+                id: "holder_wall_hooks".into(),
+                label: tr("Halter: Haken und Bügel", "Holder: hooks and brackets").into(),
+            },
+            Action {
+                id: "holder_wall_quivers".into(),
+                label: tr("Halter: Köcher (Röhren)", "Holder: quivers (tubes)").into(),
+            },
         ];
         let actions = if p.kind == Kind::Wall {
             wall_actions
@@ -1407,10 +1445,45 @@ impl DrawerPanel {
                     Some(HolderSpec::WallHoles(x)) => x.title = title,
                     Some(HolderSpec::WallCradles(x)) => x.title = title,
                     Some(HolderSpec::WallVSlots(x)) => x.title = title,
+                    Some(HolderSpec::WallHooks(x)) => x.title = title,
+                    Some(HolderSpec::WallQuivers(x)) => x.title = title,
                     _ => {}
                 }
                 refresh_holder(p);
             }),
+            ("wk_saddle", _, Some(on), _) => self.edit_selected(|p| {
+                if let Some(HolderSpec::WallHooks(x)) = &mut p.holder {
+                    x.saddle = on;
+                }
+                refresh_holder(p);
+            }),
+            ("wq_open", _, Some(on), _) => self.edit_selected(|p| {
+                if let Some(HolderSpec::WallQuivers(x)) = &mut p.holder {
+                    x.open_bottom = on;
+                }
+                refresh_holder(p);
+            }),
+            ("wq_tubes", _, _, Some(t)) => {
+                let tubes = parse_row(&t);
+                if tubes.is_empty() {
+                    return vec![Effect::Toast {
+                        text: tr(
+                            "Keine Röhre erkannt: Ø oder Ø=Text, durch Komma",
+                            "No tube recognised: Ø or Ø=text, separated by commas",
+                        )
+                        .into(),
+                        level: Level::Warn,
+                    }];
+                }
+                self.edit_selected(|p| {
+                    if let Some(HolderSpec::WallQuivers(x)) = &mut p.holder {
+                        // The new tubes keep the depth the old ones had.
+                        let depth = x.tubes.first().and_then(|t| t.depth);
+                        x.tubes = tubes.iter().map(|t| RowHole { depth, ..t.clone() }).collect();
+                    }
+                    refresh_holder(p);
+                });
+            }
             ("wh_shape", _, _, Some(t)) => self.edit_selected(|p| {
                 if let Some(HolderSpec::WallHoles(x)) = &mut p.holder {
                     x.shape = shape_of(&t);
@@ -2053,7 +2126,13 @@ impl DrawerPanel {
                     int("sel_tape_h", t.height, 1, 10),
                 ));
             }
-            Some(h @ (HolderSpec::WallHoles(_) | HolderSpec::WallCradles(_) | HolderSpec::WallVSlots(_))) => {
+            Some(
+                h @ (HolderSpec::WallHoles(_)
+                | HolderSpec::WallCradles(_)
+                | HolderSpec::WallVSlots(_)
+                | HolderSpec::WallHooks(_)
+                | HolderSpec::WallQuivers(_)),
+            ) => {
                 let same = |other: &HolderSpec| std::mem::discriminant(other) == std::mem::discriminant(h);
                 let mut options =
                     vec![Choice { value: String::new(), label: tr("Satz laden …", "Load a set …").into() }];
@@ -2071,6 +2150,8 @@ impl DrawerPanel {
                     HolderSpec::WallHoles(x) => x.title.clone(),
                     HolderSpec::WallCradles(x) => x.title.clone(),
                     HolderSpec::WallVSlots(x) => x.title.clone(),
+                    HolderSpec::WallHooks(x) => x.title.clone(),
+                    HolderSpec::WallQuivers(x) => x.title.clone(),
                     _ => None,
                 };
                 rows.push(row(
@@ -2192,6 +2273,81 @@ impl DrawerPanel {
                                     "{} Schlitze, {} × {} Zellen",
                                     "{} slots, {} × {} cells",
                                     x.slots.len(),
+                                    x.cells[0],
+                                    x.cells[1]
+                                )),
+                            ]),
+                        ));
+                    }
+                    HolderSpec::WallHooks(x) => {
+                        rows.push(row(
+                            tr("Form", "Shape"),
+                            check(
+                                "sel_wk_saddle",
+                                tr(
+                                    "Bügel: ein breiter Arm (Kabel, Schläuche)",
+                                    "Bracket: one wide arm (cables, hoses)",
+                                ),
+                                x.saddle,
+                            ),
+                        ));
+                        if !x.saddle {
+                            rows.push(row(
+                                tr("Arme, Abstand (0 = verteilt)", "Arms, gap (0 = spread)"),
+                                Node::row(vec![
+                                    int("sel_wk_arms", x.arms, 1, 6),
+                                    Node::mm("sel_wk_gap", x.gap, 0.0, 150.0),
+                                ]),
+                            ));
+                        }
+                        rows.push(row(tr("Ausladung", "Reach"), Node::mm("sel_wk_reach", x.reach, 15.0, 150.0)));
+                        rows.push(row(tr("Spitze hoch", "Tip up"), Node::mm("sel_wk_tip", x.tip, 0.0, 60.0)));
+                        rows.push(row(
+                            tr("Arm breit × dick", "Arm width × thickness"),
+                            Node::row(vec![
+                                Node::mm("sel_wk_arm_w", x.arm_w, 5.0, 200.0),
+                                Node::mm("sel_wk_thick", x.thick, 3.0, 30.0),
+                            ]),
+                        ));
+                        rows.push(row(
+                            tr("Größe", "Size"),
+                            small(tf!("{} × {} Zellen", "{} × {} cells", x.cells[0], x.cells[1])),
+                        ));
+                    }
+                    HolderSpec::WallQuivers(x) => {
+                        rows.push(row(
+                            tr("Röhren", "Tubes"),
+                            Node::TextInput {
+                                id: "sel_wq_tubes".into(),
+                                value: row_text(&x.tubes),
+                                hint: Some(
+                                    tr(
+                                        "Ø oder Ø=Text je Röhre, durch Komma",
+                                        "Ø or Ø=text per tube, separated by commas",
+                                    )
+                                    .into(),
+                                ),
+                                multiline: false,
+                                enabled: true,
+                            },
+                        ));
+                        let depth = x.tubes.first().map_or(60.0, RowHole::depth);
+                        rows.push(row(tr("Tiefe", "Depth"), Node::mm("sel_wq_depth", depth, 10.0, 300.0)));
+                        rows.push(row(
+                            tr("Wand, Spiel", "Wall, clearance"),
+                            Node::row(vec![
+                                Node::mm("sel_wq_wall", x.wall, 0.8, 4.0),
+                                Node::mm("sel_wq_clear", x.clearance, 0.0, 5.0),
+                            ]),
+                        ));
+                        rows.push(row(
+                            tr("Boden", "Bottom"),
+                            Node::row(vec![
+                                check("sel_wq_open", tr("unten offen", "open below"), x.open_bottom),
+                                small(tf!(
+                                    "{} Röhren, {} × {} Zellen",
+                                    "{} tubes, {} × {} cells",
+                                    x.tubes.len(),
                                     x.cells[0],
                                     x.cells[1]
                                 )),

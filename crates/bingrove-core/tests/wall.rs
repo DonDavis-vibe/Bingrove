@@ -280,12 +280,67 @@ fn wall_holders_are_watertight_and_sized_as_planned() {
             HolderSpec::WallHoles(s) => s.block(),
             HolderSpec::WallCradles(s) => s.block(),
             HolderSpec::WallVSlots(s) => s.block(),
+            HolderSpec::WallHooks(s) => s.block(),
+            HolderSpec::WallQuivers(s) => s.block(),
             _ => unreachable!(),
         };
         assert!(block[0] <= size[0] + 1e-6, "{id}: {block:?} wider than {size:?}");
         assert!(block[1] <= size[1] - 5.95 + 1e-6, "{id}: {block:?} deeper than {size:?}");
         assert!(block[2] <= size[2] + 1e-6, "{id}: {block:?} taller than {size:?}");
     }
+}
+
+#[test]
+fn hooks_print_on_the_bed_and_quivers_stay_open() {
+    use bingrove_core::model::{ItemKind, ItemRequest, RowHole, WallHookSpec, WallQuiverSpec};
+    let p = Profile { seg: 24, ..Profile::default() };
+    // A fork: two arms lying on the bed (z = 0) from the front, tips up, nothing between them.
+    let fork = WallHookSpec { arms: 2, gap: 28.0, reach: 45.0, tip: 6.0, ..WallHookSpec::default() }.fit();
+    let h = HolderSpec::WallHooks(fork.clone());
+    let [w, _, _] = h.size();
+    let part = wall::holder(&h, true, MagnetMode::None, &p);
+    let solid = &part.solid;
+    let arms = inside(solid, [w, 2.0, fork.thick], [0.0, 0.0, 0.0]);
+    let expected = 2.0 * fork.arm_w * 2.0 * fork.thick;
+    assert!((arms - expected).abs() < 1.0, "arms at the front: {arms:.1} of {expected:.1} mm³");
+    assert!(inside(solid, [fork.gap - 2.0, 30.0, 40.0], [w / 2.0 - fork.gap / 2.0 + 1.0, 0.0, -1.0]) < 0.01);
+    assert!(inside(solid, [w, 2.0, 2.0], [0.0, 0.0, fork.thick + fork.tip + 0.5]) < 0.01, "tip too tall");
+    // A quiver: tubes from the bottom, hollow above their floor, open at the top.
+    let tubes = vec![RowHole { d: 20.0, depth: Some(50.0), label: "A".into() }; 2];
+    let q = WallQuiverSpec { tubes, ..WallQuiverSpec::default() }.fit();
+    let h = HolderSpec::WallQuivers(q.clone());
+    let part = wall::holder(&h, true, MagnetMode::None, &p);
+    let [w, _, _] = h.size();
+    let r = (20.0 + q.clearance) / 2.0;
+    let place = q.place(&q.tubes[0]);
+    let cx = w / 2.0 - (2.0 * place + q.wall) / 2.0 + q.wall / 2.0 + place / 2.0;
+    let cy = r + q.wall;
+    let hollow = inside(&part.solid, [4.0, 4.0, 45.0], [cx - 2.0, cy - 2.0, bingrove_core::spec::FLOOR + 0.5]);
+    assert!(hollow < 0.01, "tube not hollow: {hollow:.2} mm³");
+    let wall_ring = inside(&part.solid, [1.0, 4.0, 40.0], [cx - r - q.wall + 0.3, cy - 2.0, 5.0]);
+    assert!(wall_ring > 50.0, "no tube wall: {wall_ring:.2} mm³");
+    // The new sets hang on a wall without a warning.
+    let mut project = wall_project(true, vec![]);
+    project.drawer.width = 8.0 * 42.0;
+    project.drawer.depth = 6.0 * 42.0;
+    project.drawer.height = 90.0;
+    let set = |name: &str, id: &str| ItemRequest {
+        name: name.into(),
+        quantity: 1,
+        what: ItemKind::Holder { holder: None, set: Some(id.into()), count: None },
+    };
+    project.items = vec![
+        set("Hammer", "wall_hammer"),
+        set("Kabel", "wall_cable_saddle"),
+        set("Pinsel", "wall_quiver_brushes"),
+        set("Spray", "wall_spray_cans"),
+    ];
+    let plan = plan(&project).unwrap();
+    assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    assert_eq!(plan.placements.len(), 4);
+    let names: Vec<_> = plan.parts.iter().map(|e| e.name.as_str()).collect();
+    assert!(names.iter().any(|n| n.starts_with("wandhalter_haken_Hammer_45")), "{names:?}");
+    assert!(names.iter().any(|n| n.starts_with("wandhalter_koecher_Spray")), "{names:?}");
 }
 
 /// Volume of `solid` inside a box.

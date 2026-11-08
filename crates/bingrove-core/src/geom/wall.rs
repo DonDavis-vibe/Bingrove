@@ -17,7 +17,9 @@ use super::holders::hole_solid;
 use super::kernel::{Solid, cuboid, cylinder, polygon_prism, rrect_prism, subtract, swept, translate, union};
 use super::text;
 use crate::catalog::HOLE_WALL;
-use crate::model::{BinSpec, HolderSpec, MagnetMode, WallCradleSpec, WallHolesSpec, WallVSlotSpec};
+use crate::model::{
+    BinSpec, HolderSpec, MagnetMode, WallCradleSpec, WallHolesSpec, WallHookSpec, WallQuiverSpec, WallVSlotSpec,
+};
 use crate::profile::Profile;
 use crate::spec::*;
 
@@ -355,6 +357,8 @@ pub fn holder(h: &HolderSpec, hooks: bool, magnets: MagnetMode, p: &Profile) -> 
         HolderSpec::WallHoles(s) => wall_holes(s, units, hooks, magnets, p),
         HolderSpec::WallCradles(s) => wall_cradles(s, units, hooks, magnets, p),
         HolderSpec::WallVSlots(s) => wall_vslots(s, units, hooks, magnets, p),
+        HolderSpec::WallHooks(s) => wall_hooks(s, units, hooks, magnets, p),
+        HolderSpec::WallQuivers(s) => wall_quivers(s, units, hooks, magnets, p),
         other => panic!("not a wall holder: {other:?}"),
     };
     Part::new(crate::names::wall_holder(h, hooks), solid)
@@ -468,6 +472,83 @@ fn wall_vslots(s: &WallVSlotSpec, units: u32, hooks: bool, magnets: MagnetMode, 
     if let Some(t) = title(&s.title) {
         // Above the slots' texts when there are any.
         let z = if s.slots.iter().any(|v| !v.label.trim().is_empty()) { top + 9.0 } else { top };
+        solid = f.above(solid, t, f.w / 2.0, z, f.w - 2.0 * WALL - 4.0);
+    }
+    solid
+}
+
+/// Arms out of the back plate at the part's bottom, so they print lying on the bed, their tips
+/// turned up at the front and a 45° gusset under the plate where they carry most.
+fn wall_hooks(s: &WallHookSpec, units: u32, hooks: bool, magnets: MagnetMode, p: &Profile) -> Solid {
+    let f = frame(s.cells, units, hooks, magnets, p);
+    let thick = s.thick.clamp(3.0, f.h - 1.0);
+    let tip = s.tip.clamp(0.0, f.h - 1.0 - thick);
+    let tip_t = thick.min(6.0);
+    let g = thick.min(f.back / 3.0);
+    // Side view: y from the front (0) to the back plate, z up the wall.
+    let side = [
+        [0.0, 0.0],
+        [f.back + 0.01, 0.0],
+        [f.back + 0.01, thick + g],
+        [f.back - g, thick],
+        [tip_t, thick],
+        [tip_t, thick + tip],
+        [0.0, thick + tip],
+    ];
+    let arm = |x0: f64, x1: f64| translate(&across(&side, (x1 - x0) / 2.0), [(x0 + x1) / 2.0, 0.0, 0.0]);
+    let n = s.arms.max(1);
+    let arms: Vec<Solid> = if s.saddle {
+        // One arm over the whole part, inside its rounded corners.
+        vec![arm(0.0, f.w) ^ outline(f.w, f.h, 0.0, [-1.0, f.back + 1.0], p.seg)]
+    } else {
+        let aw = s.arm_w.min(f.w / n as f64 - 1.0);
+        let centres: Vec<f64> = if s.gap > 0.0 && n > 1 {
+            let span = n as f64 * aw + (n - 1) as f64 * s.gap;
+            (0..n).map(|k| f.w / 2.0 - span / 2.0 + aw / 2.0 + k as f64 * (aw + s.gap)).collect()
+        } else {
+            (0..n).map(|k| f.w * (k as f64 + 0.5) / n as f64).collect()
+        };
+        centres.into_iter().map(|c| arm(c - aw / 2.0, c + aw / 2.0)).collect()
+    };
+    let mut solid = union(std::iter::once(f.solid.clone()).chain(arms).collect());
+    if let Some(t) = title(&s.title) {
+        solid = f.above(solid, t, f.w / 2.0, thick + g, f.w - 2.0 * WALL - 4.0);
+    }
+    solid
+}
+
+/// Thin-walled tubes standing on the part's bottom at its front, each with a web back to the
+/// plate, open at the top (and below with `open_bottom`), neighbours sharing a wall; their
+/// texts on the plate above.
+fn wall_quivers(s: &WallQuiverSpec, units: u32, hooks: bool, magnets: MagnetMode, p: &Profile) -> Solid {
+    let f = frame(s.cells, units, hooks, magnets, p);
+    let [width, _, _] = s.block();
+    let mut x = f.w / 2.0 - width / 2.0 + s.wall / 2.0;
+    let mut tubes = Vec::new();
+    let mut bores = Vec::new();
+    let mut labels = Vec::new();
+    for tube in &s.tubes {
+        let place = s.place(tube);
+        let r = (tube.d + s.clearance) / 2.0;
+        let top = s.height(tube).min(f.h);
+        // At the part's front, a web back to the plate (the depth is rounded up to units).
+        let (cx, cy) = (x + place / 2.0, r + s.wall);
+        tubes.push(translate(&cylinder(top, r + s.wall, r + s.wall, p.seg), [cx, cy, 0.0]));
+        tubes.push(cuboid([r, f.back - cy + 0.01, top], [cx - r / 2.0, cy, 0.0]));
+        let floor = if s.open_bottom { -1.0 } else { FLOOR };
+        bores.push(translate(&cylinder(top - floor + 1.0, r, r, p.seg), [cx, cy, floor]));
+        if !tube.label.trim().is_empty() {
+            labels.push((tube.label.trim().to_string(), cx, top, place - 1.0));
+        }
+        x += place;
+    }
+    let mut solid = subtract(union(std::iter::once(f.solid.clone()).chain(tubes).collect()), bores);
+    for (t, cx, top, room) in labels {
+        solid = f.above(solid, &t, cx, top, room);
+    }
+    if let Some(t) = title(&s.title) {
+        let top = s.tubes.iter().map(|t| s.height(t)).fold(0.0, f64::max).min(f.h);
+        let z = if s.tubes.iter().any(|t| !t.label.trim().is_empty()) { top + 9.0 } else { top };
         solid = f.above(solid, t, f.w / 2.0, z, f.w - 2.0 * WALL - 4.0);
     }
     solid
