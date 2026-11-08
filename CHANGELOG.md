@@ -8,15 +8,18 @@ Plugins*. It needs a Meshgrove with the plugin system (0.8.0 or newer).
 Walls, reworked. **Wall plates and wall parts from 0.4 do not fit those from 0.5**: the hook,
 the lift and the magnets moved. Print plate and parts with the same version.
 
-- The wall hook holds more and prints cleanly: wider and taller, its finger joined to the stem
-  by a 45° gusset, so the plate prints it with only a short free overhang. The keyhole in the
-  feet is now the hook's real way, with a lead-in on the tooth and a millimetre to spare past
-  the stop. Wall parts are 4 mm short at the top and go in pushed up to their stop; anything
-  from about 2 mm of lift works.
-- A latch: every cell of a hook plate has a spring blade standing on its floor (printed
-  upright, so it bends along its layers), and the lowest two outer feet of a wall part a rib
-  that clicks over its nose on the way down and holds against lifting. Lift firmly to take a
-  part off. *Output* takes the latch strength and the hook play on walls; 0 leaves the latch out.
+- Two wall hooks per cell, one low and one high, so a hanging part tips out neither at the top
+  nor at the bottom (with one low hook, the top of a part rocked away from the wall). Each holds
+  more and prints cleanly: wider and taller, its finger joined to the stem by a 45° gusset, so
+  the plate prints it with only a short free overhang. The keyholes in the feet are now the
+  hooks' real way, with a lead-in on the tooth and a millimetre to spare past the stop. Wall
+  parts are 4 mm short at the top and go in pushed up to their stop; anything from about 2 mm of
+  lift works.
+- A latch: every cell of a hook plate has a spring blade beside the hooks. It stands from the
+  bed in a slot through the floor, joined to the plate only at its root, so it really bends
+  (printed upright, along its layers). The lowest two outer feet of a wall part have a rib that
+  clicks over its nose on the way down and holds against lifting, with hardly any play once
+  the part has settled. Lift firmly to take a part off. *Output* takes the latch strength and the hook play on walls; 0 leaves the latch out.
 - Calibration: the wall cell gets the blade, and three blocks with a softer or firmer latch
   (0.3, 0.5, 0.7) join the three hook blocks.
 - Wall **hoppers** (`hopper`): a wall bin with a low front and sides that slope up to the wall.

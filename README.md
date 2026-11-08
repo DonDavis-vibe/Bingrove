@@ -47,9 +47,10 @@ connectors between its pieces and, for steel tops, magnet pockets underneath.
 
 ### Wall: parts that hang
 
-A plate on the wall with a hook and a spring blade in every cell. Wall parts are 4 mm shorter
-at the top: you **push them up to their stop, put them in straight and let them slide down**.
-The hooks then keep them from being pulled straight off, and a **latch clicks in**, so a part
+A plate on the wall with two hooks (low and high) and a spring blade in every cell. Wall parts
+are 4 mm shorter at the top: you **push them up to their stop, put them in straight and let
+them slide down**. The hooks then keep them from being pulled straight off or tipping out, and
+a **latch clicks in**, so a part
 does not come along when you pull a tool out upwards. Lift a part firmly to take it out.
 Magnets help. Without hooks the parts hold by magnets alone, and then any bin fits.
 

@@ -30,10 +30,11 @@ const FOOT_MID: f64 = BIN_GAP + (BIN_SIZE - HOOK_LIFT) / 2.0;
 
 pub use crate::spec::wall_size as size;
 
-/// The hook's side view (y up the wall, z out of it) as convex pieces: the stem, the gusset
-/// with the root of the finger, and the rest of the finger with its tip chamfered underneath.
-fn hook_pieces() -> [Vec<[f64; 2]>; 3] {
-    let (y0, s, r, h) = (HOOK_Y0, HOOK_STEM, HOOK_REACH, HOOK_H);
+/// The side view (y up the wall, z out of it) of the hook whose stem starts at `y0`, as convex
+/// pieces: the stem, the gusset with the root of the finger, and the rest of the finger with its
+/// tip chamfered underneath.
+fn hook_pieces(y0: f64) -> [Vec<[f64; 2]>; 3] {
+    let (s, r, h) = (HOOK_STEM, HOOK_REACH, HOOK_H);
     let (under, g, tip) = (HOOK_H - HOOK_FINGER, HOOK_GUSSET, 0.5);
     [
         vec![[y0, -0.01], [y0 + s, -0.01], [y0 + s, h], [y0, h]],
@@ -49,10 +50,10 @@ fn across(pts: &[[f64; 2]], half: f64) -> Solid {
     translate(&polygon_prism(pts, 0.0, 2.0 * half, 8).rotate(90.0, 0.0, 90.0), [-half, 0.0, 0.0])
 }
 
-/// The hook in a cell's frame on the plate: x from the cell centre, y up the wall from the
+/// The hooks in a cell's frame on the plate: x from the cell centre, y up the wall from the
 /// cell's lower grid line, z out of the wall from the pocket floor.
 pub fn hook() -> Solid {
-    union(hook_pieces().iter().map(|piece| across(piece, HOOK_W / 2.0)).collect())
+    union(HOOK_YS.iter().flat_map(|&y0| hook_pieces(y0)).map(|piece| across(&piece, HOOK_W / 2.0)).collect())
 }
 
 /// The convex hull of points in a plane (counter-clockwise).
@@ -76,7 +77,7 @@ fn hull2d(mut pts: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
     out
 }
 
-/// The room a hook needs in a foot, in the cell frame of a part seated on the plate, with
+/// The room the hooks need in a foot, in the cell frame of a part seated on the plate, with
 /// `gap` all round. The part goes in straight while lifted by `HOOK_LIFT` (up to
 /// `HOOK_OVERTRAVEL` more), so the hook comes in from below through the channel its shadow cuts;
 /// then the part slides down past its seat by the air under it (it settles onto its lower foot
@@ -85,10 +86,10 @@ fn hull2d(mut pts: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
 pub fn keyhole(gap: f64) -> Solid {
     let half = HOOK_W / 2.0 + gap;
     let (low, high) = (-(HOOK_LIFT + HOOK_OVERTRAVEL), BIN_GAP);
-    let mut cuts: Vec<Solid> = hook_pieces()
-        .iter()
-        .enumerate()
-        .map(|(i, piece)| {
+    let lift_in = HOOK_REACH - HOOK_STEM + 2.0 * gap;
+    let mut cuts = Vec::new();
+    for y0 in HOOK_YS {
+        cuts.extend(hook_pieces(y0).iter().enumerate().map(|(i, piece)| {
             let mut pts = Vec::new();
             for &[y, z] in piece {
                 // The stem stands on the floor: its way is open to the foot's underside.
@@ -99,12 +100,11 @@ pub fn keyhole(gap: f64) -> Solid {
                 }
             }
             across(&hull2d(pts), half)
-        })
-        .collect();
-    // The way in: lifted by at least `lift_in`, the whole hook passes below the tooth.
-    let lift_in = HOOK_REACH - HOOK_STEM + 2.0 * gap;
-    let (y0, y1) = (HOOK_Y0 + low - gap, HOOK_Y0 + HOOK_REACH - lift_in + gap);
-    cuts.push(cuboid([2.0 * half, y1 - y0, HOOK_H + gap + 1.0], [-half, y0, -1.0]));
+        }));
+        // The way in: lifted by at least `lift_in`, the whole hook passes below the tooth.
+        let (y_in, y1) = (y0 + low - gap, y0 + HOOK_REACH - lift_in + gap);
+        cuts.push(cuboid([2.0 * half, y1 - y_in, HOOK_H + gap + 1.0], [-half, y_in, -1.0]));
+    }
     union(cuts)
 }
 
@@ -119,10 +119,11 @@ fn nose_len() -> f64 {
     flank(DETENT_NOSE, true) + DETENT_FLAT + flank(DETENT_NOSE, false)
 }
 
-/// The latch's spring blade in a cell's frame on the plate (like `hook`).
-pub fn blade() -> Solid {
-    let (x0, x1, n) = (-DETENT_T / 2.0, DETENT_T / 2.0, DETENT_NOSE);
-    let (y0, y1) = (DETENT_Y0, DETENT_Y0 + DETENT_LEN);
+/// The latch's spring blade in a cell's frame on the plate (like `hook`), standing from the bed
+/// `floor` below the pocket floor, through the slot `blade_relief` cuts.
+pub fn blade(floor: f64) -> Solid {
+    let (x0, x1, n) = (DETENT_X - DETENT_T / 2.0, DETENT_X + DETENT_T / 2.0, DETENT_NOSE);
+    let (y0, y1) = (DETENT_Y0 - DETENT_ROOT, DETENT_Y0 + DETENT_LEN);
     let ya = y1 - nose_len();
     let pts = [
         [x0, y0],
@@ -133,16 +134,25 @@ pub fn blade() -> Solid {
         [x1, y1],
         [x0, y1],
     ];
-    translate(&polygon_prism(&pts, 0.0, DETENT_H + 0.01, 8), [0.0, 0.0, -0.01])
+    translate(&polygon_prism(&pts, 0.0, floor + DETENT_H, 8), [0.0, 0.0, -floor])
+}
+
+/// The slot through a wall plate's floor (`floor` thick) that frees the blade beyond its root,
+/// with room on its back to bend away, in the same frame as `blade`.
+pub fn blade_relief(floor: f64) -> Solid {
+    let x0 = DETENT_X - DETENT_T / 2.0 - DETENT_ROOM;
+    let x1 = DETENT_X + DETENT_T / 2.0 + DETENT_NOSE + DETENT_RELIEF;
+    let (y0, y1) = (DETENT_Y0, DETENT_Y0 + DETENT_LEN + DETENT_RELIEF);
+    cuboid([x1 - x0, y1 - y0, floor + 2.0], [x0, y0, -floor - 1.0])
 }
 
 /// The room the blade needs in a foot, in the cell frame of a part seated on the plate: its
 /// way from the lifted position down past the seat, with `gap` round it and room to bend
 /// away on its back. It runs straight out of the wall, so the way in is the same slot.
 fn blade_slot(gap: f64) -> Solid {
-    let x0 = -DETENT_T / 2.0 - DETENT_ROOM;
-    let x1 = DETENT_T / 2.0 + DETENT_NOSE + gap;
-    let y0 = DETENT_Y0 - HOOK_LIFT - HOOK_OVERTRAVEL - gap;
+    let x0 = DETENT_X - DETENT_T / 2.0 - DETENT_ROOM;
+    let x1 = DETENT_X + DETENT_T / 2.0 + DETENT_NOSE + gap;
+    let y0 = DETENT_Y0 - DETENT_ROOT - HOOK_LIFT - HOOK_OVERTRAVEL - gap;
     let y1 = DETENT_Y0 + DETENT_LEN + BIN_GAP + gap;
     cuboid([x1 - x0, y1 - y0, DETENT_H + gap + 1.0], [x0, y0, -1.0])
 }
@@ -151,16 +161,21 @@ fn blade_slot(gap: f64) -> Solid {
 /// is seated, standing `detent` into the nose's way. Coming down, its 45° flank pushes the
 /// blade aside until the nose snaps over it; lifting, its steep flank meets the nose's.
 fn latch_rib(gap: f64, detent: f64) -> Solid {
-    let wall = DETENT_T / 2.0 + DETENT_NOSE + gap;
-    let inner = DETENT_T / 2.0 + DETENT_NOSE - detent;
+    let wall = DETENT_X + DETENT_T / 2.0 + DETENT_NOSE + gap;
+    let inner = DETENT_X + DETENT_T / 2.0 + DETENT_NOSE - detent;
     let depth = wall - inner;
-    // The steep flanks of rib and nose run parallel, `gap` apart along the wall.
-    let top = DETENT_Y0 + DETENT_LEN - nose_len() + flank(DETENT_NOSE + gap, true) - gap;
+    // The steep flanks of rib and nose run parallel, `LATCH_PLAY` apart along the wall once the
+    // part has settled down by the air under its feet: it can hardly be lifted before the latch
+    // holds, and a rib printed a little thick only presses the part down into its seat.
+    let top = DETENT_Y0 + DETENT_LEN - nose_len() + flank(DETENT_NOSE + gap, true) + BIN_GAP - LATCH_PLAY;
     let (c, d) = (top - flank(depth, true), top - flank(depth, true) - DETENT_FLAT);
     let bottom = d - flank(depth, false);
     let pts = [[wall + 1.0, top], [wall, top], [inner, c], [inner, d], [wall, bottom], [wall + 1.0, bottom]];
     translate(&polygon_prism(&pts, 0.0, DETENT_H + gap + 2.0, 8), [0.0, 0.0, -1.0])
 }
+
+/// How far a settled part can be lifted before the latch rib meets the blade's nose.
+const LATCH_PLAY: f64 = 0.05;
 
 /// Which feet carry the latch rib: the lowest row, at most the two outer ones, so a big part
 /// does not sit too tight.
@@ -589,7 +604,7 @@ mod tests {
         let b = hook().bounding_box();
         let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
         assert!(near(b.min.x, -HOOK_W / 2.0) && near(b.max.x, HOOK_W / 2.0), "{b:?}");
-        assert!(near(b.min.y, HOOK_Y0) && near(b.max.y, HOOK_Y0 + HOOK_REACH), "{b:?}");
+        assert!(near(b.min.y, HOOK_YS[0]) && near(b.max.y, HOOK_YS[1] + HOOK_REACH), "{b:?}");
         assert!(near(b.min.z, -0.01) && near(b.max.z, HOOK_H), "{b:?}");
         // Stem, gusset and finger, nothing else.
         let side = HOOK_STEM * HOOK_H
@@ -598,7 +613,8 @@ mod tests {
             + (HOOK_REACH - HOOK_STEM - HOOK_GUSSET) * HOOK_FINGER
             - 0.5 * 0.5 / 2.0
             + HOOK_STEM * 0.01;
-        assert!((hook().volume() - side * HOOK_W).abs() < 1e-3, "{} vs {}", hook().volume(), side * HOOK_W);
+        let both = 2.0 * side * HOOK_W;
+        assert!((hook().volume() - both).abs() < 1e-3, "{} vs {both}", hook().volume());
     }
 
     #[test]

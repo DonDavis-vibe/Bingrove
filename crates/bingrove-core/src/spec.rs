@@ -100,14 +100,15 @@ pub const CONNECTOR_INSET: f64 = 0.4;
 /// Floor kept around a connector's pocket where a skeleton floor has its cross cut-out.
 pub const CONNECTOR_WALL: f64 = 1.2;
 
-/// Wall plates: the hook standing on every cell's pocket floor, in the plate's frame (x across
-/// the cell from its centre, y up the wall from the cell's lower grid line, z out of the wall
-/// from the pocket floor). Its stem runs from `HOOK_Y0` to `HOOK_Y0 + HOOK_STEM`, the finger on top
-/// reaches up to `HOOK_Y0 + HOOK_REACH` and is `HOOK_FINGER` thick; `HOOK_H` tall in all. Under
-/// the finger a 45° gusset `HOOK_GUSSET` long joins it to the stem, so the plate prints the
+/// Wall plates: the two hooks standing on every cell's pocket floor, in the plate's frame (x
+/// across the cell from its centre, y up the wall from the cell's lower grid line, z out of the
+/// wall from the pocket floor). One sits low and one high in the cell, so a part can tip out
+/// neither at the top nor at the bottom. Each stem runs from its `HOOK_YS` to `+ HOOK_STEM`, the
+/// finger on top reaches up to `+ HOOK_REACH` and is `HOOK_FINGER` thick; `HOOK_H` tall in all.
+/// Under the finger a 45° gusset `HOOK_GUSSET` long joins it to the stem, so the plate prints the
 /// finger with only a short free overhang.
 pub const HOOK_W: f64 = 10.0;
-pub const HOOK_Y0: f64 = 10.0;
+pub const HOOK_YS: [f64; 2] = [10.0, 27.5];
 pub const HOOK_STEM: f64 = 2.5;
 pub const HOOK_REACH: f64 = 5.0;
 pub const HOOK_FINGER: f64 = 1.4;
@@ -119,19 +120,24 @@ pub const HOOK_LIFT: f64 = 4.0;
 /// goes in.
 pub const HOOK_OVERTRAVEL: f64 = 1.0;
 
-/// Wall plates: the spring blade of the latch, standing on every cell's pocket floor in the same
-/// frame as the hook, centred across the cell. `DETENT_T` thick and `DETENT_H` tall, it is
-/// anchored at its lower end `DETENT_Y0` and free `DETENT_LEN` higher up, where a nose sticks
+/// Wall plates: the spring blade of the latch, in the same frame as the hooks, `DETENT_X` across
+/// the cell beside them. `DETENT_T` thick, it stands from the bed through a slot in the floor
+/// to `DETENT_H` above the pocket floor. Its root, `DETENT_ROOT` long below `DETENT_Y0`, is
+/// joined to the floor; from there it is free for `DETENT_LEN` up the wall, where a nose sticks
 /// out `DETENT_NOSE` towards +x. The plate prints it standing, so it bends along its layers.
+pub const DETENT_X: f64 = -8.0;
 pub const DETENT_T: f64 = 1.2;
 pub const DETENT_H: f64 = 3.0;
-pub const DETENT_Y0: f64 = 22.0;
+pub const DETENT_Y0: f64 = 12.0;
+pub const DETENT_ROOT: f64 = 2.0;
 pub const DETENT_LEN: f64 = 10.0;
 pub const DETENT_NOSE: f64 = 0.8;
 /// Flat between the flanks of the nose and of the rib that catches it.
 pub const DETENT_FLAT: f64 = 0.2;
-/// Room beside the blade in a wall part's foot for it to bend away.
+/// Room beside the blade in a wall part's foot, and in the plate's floor, for it to bend away.
 pub const DETENT_ROOM: f64 = 1.0;
+/// Air around the free blade in the slot through the plate's floor, apart from `DETENT_ROOM`.
+pub const DETENT_RELIEF: f64 = 0.4;
 
 /// A wall hopper's front, as a share of its height; its sides slope up from there to full
 /// height at `HOPPER_SLOPE` of the way back to the wall.

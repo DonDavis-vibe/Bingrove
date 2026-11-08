@@ -51,7 +51,7 @@ fn overlap(a: &Solid, b: &Solid, dy: f64, dz: f64) -> f64 {
 /// The spring blade of the cell under the part at (x, y), in plate coordinates.
 fn blade_at(plan: &Plan, x: u32, y: u32) -> Solid {
     let g = &plan.grid;
-    wall::blade().translate(Vec3::new(g.line(0, x) + 21.0, g.line(1, y), g.floor))
+    wall::blade(g.floor).translate(Vec3::new(g.line(0, x) + 21.0, g.line(1, y), g.floor))
 }
 
 #[test]
@@ -60,8 +60,10 @@ fn a_part_goes_in_lifted_slides_down_clicks_and_hangs() {
     let plan = plan(&wall_project(true, vec![tray(1, 1, [1, 1])])).unwrap();
     let (plate, part) = seated(&plan, &p);
     let blade = blade_at(&plan, 1, 1);
-    // Seated, and settled down onto its lower foot faces: no overlap.
-    assert!(overlap(&plate, &part, 0.0, 0.0) < 0.01, "seated: {}", overlap(&plate, &part, 0.0, 0.0));
+    // Centred in its cell only the latch rib presses on the blade's nose, which pushes it down
+    // onto its lower foot faces; settled there, nothing touches.
+    let (all, nose) = (overlap(&plate, &part, 0.0, 0.0), overlap(&blade, &part, 0.0, 0.0));
+    assert!(all - nose < 0.01, "centred: {:.3} mm³ beside the blade", all - nose);
     let settled = -BIN_GAP + 0.02;
     assert!(overlap(&plate, &part, settled, 0.0) < 0.01, "settled: {}", overlap(&plate, &part, settled, 0.0));
     // Lifted, it goes straight in past hook and blade: pushed up to its stop (the foot's top
@@ -91,8 +93,9 @@ fn a_part_goes_in_lifted_slides_down_clicks_and_hangs() {
     assert!(pulled > 5.0, "pulled out 1 mm: only {pulled} mm³ in the way");
     let pulled = overlap(&plate, &part, settled, 1.0);
     assert!(pulled > 5.0, "settled and pulled out 1 mm: only {pulled} mm³ in the way");
-    // ... and lifting it brings the rib onto the nose's steep flank after a little play.
-    assert!(overlap(&plate, &part, settled + 0.3, 0.0) < 0.01, "no play before the latch");
+    // ... and lifting it brings the rib onto the nose's steep flank almost at once.
+    let caught = overlap(&blade, &part, settled + 0.15, 0.0);
+    assert!(caught > 1e-4, "lifted 0.15 mm the rib is still clear of the nose");
     let held = overlap(&blade, &part, settled + 0.9, 0.0);
     assert!(held > 0.05, "lifted 0.9 mm the latch does not hold: {held:.3} mm³");
     // Lifted to the top, it comes out.
@@ -140,10 +143,14 @@ fn the_plate_has_a_hook_in_every_cell() {
     let without = plan(&wall_project(false, vec![])).unwrap();
     assert_eq!(with.parts[0].name, "wandplatte_1A_3x3_magnete_haken.stl");
     let volume = |plan: &Plan| all_parts(plan, &p)[0].mesh().unwrap().volume();
-    // Hook and blade reach 0.01 mm into the floor, which the plate has already.
-    use bingrove_core::spec::{DETENT_LEN, DETENT_T, HOOK_STEM, HOOK_W};
-    let hook = wall::hook().volume() - HOOK_W * HOOK_STEM * 0.01;
-    let blade = wall::blade().volume() - DETENT_T * DETENT_LEN * 0.01;
+    // The stems reach 0.01 mm into the floor, which the plate has already. The blade stands on
+    // the pocket floor and below it fills its slot through the floor, all but the air round it.
+    use bingrove_core::spec::{DETENT_H, DETENT_ROOT, DETENT_T, HOOK_STEM, HOOK_W};
+    let fl = with.grid.floor;
+    let hook = wall::hook().volume() - 2.0 * HOOK_W * HOOK_STEM * 0.01;
+    let blade_area = wall::blade(0.0).volume() / DETENT_H;
+    let relief_area = wall::blade_relief(fl).volume() / (fl + 2.0);
+    let blade = blade_area * DETENT_H - (relief_area - (blade_area - DETENT_T * DETENT_ROOT)) * fl;
     let added = volume(&with) - volume(&without);
     let nine = 9.0 * (hook + blade);
     assert!((added - nine).abs() < 0.5, "hooks and blades add {added:.1} mm³, nine are {nine:.1}");
@@ -152,6 +159,63 @@ fn the_plate_has_a_hook_in_every_cell() {
     assert!(hook_top <= bingrove_core::spec::BP_H - 1.2, "{hook_top}");
     // Without parts every cell stays free.
     assert_eq!(with.placements.len(), 0);
+}
+
+#[test]
+fn the_blade_is_free_but_for_its_root_and_screws_leave_hooks_and_blade_whole() {
+    use bingrove_core::geom::kernel::cuboid;
+    use bingrove_core::spec::{DETENT_LEN, DETENT_NOSE, DETENT_RELIEF, DETENT_ROOM, DETENT_T, DETENT_X, DETENT_Y0};
+    let p = Profile { seg: 32, ..Profile::default() };
+    let mut project = wall_project(true, vec![]);
+    project.options.mount.screws = true;
+    let plan = plan(&project).unwrap();
+    let g = &plan.grid;
+    let fl = g.floor;
+    let plate = &all_parts(&plan, &p)[0].solid;
+    let (cx, cy) = (g.line(0, 1) + 21.0, g.line(1, 1));
+    let blade = wall::blade(fl).translate(Vec3::new(cx, cy, fl));
+    // Round the free blade, from the bed up past the pocket floor, there is nothing but the blade.
+    let x0 = cx + DETENT_X - DETENT_T / 2.0 - DETENT_ROOM + 0.05;
+    let x1 = cx + DETENT_X + DETENT_T / 2.0 + DETENT_NOSE + DETENT_RELIEF - 0.05;
+    let free = cuboid([x1 - x0, DETENT_LEN, fl + 2.0], [x0, cy + DETENT_Y0 + 0.05, 0.0]);
+    let stray = (&(plate - &blade) ^ &free).volume();
+    assert!(stray < 0.01, "{stray:.3} mm³ of plate round the free blade");
+    // ... while just below the slot the floor is whole and holds the root.
+    let root = cuboid([4.0, 1.0, fl - 0.2], [cx + DETENT_X - 2.0, cy + DETENT_Y0 - 1.5, 0.1]);
+    assert!(((plate ^ &root).volume() - root.volume()).abs() < 0.01, "no floor round the blade's root");
+    // A corner cell has its screw in the middle, between the hooks and away from the blade:
+    // above the floor it holds just as much as a middle cell.
+    let above = |i: u32, j: u32| {
+        let at = [g.line(0, i) + 21.0 - 15.0, g.line(1, j) + 5.0, fl + 0.05];
+        (plate ^ &cuboid([30.0, 32.0, 3.5], at)).volume()
+    };
+    let (corner, middle) = (above(0, 0), above(1, 1));
+    assert!((corner - middle).abs() < 0.01, "corner cell {corner:.2} mm³, middle cell {middle:.2} mm³");
+}
+
+#[test]
+fn a_hanging_part_tips_out_neither_at_the_top_nor_at_the_bottom() {
+    use bingrove_core::spec::{BIN_SIZE, FOOT_PROFILE};
+    let p = Profile { seg: 32, ..Profile::default() };
+    let plan = plan(&wall_project(true, vec![tray(1, 1, [1, 1])])).unwrap();
+    let (_, part) = seated(&plan, &p);
+    let g = &plan.grid;
+    let hooks = wall::hook().translate(Vec3::new(g.line(0, 1) + 21.0, g.line(1, 1), g.floor));
+    let part = part.translate(Vec3::new(0.0, -BIN_GAP + 0.02, 0.0));
+    assert!((&hooks ^ &part).volume() < 0.01);
+    // Tipped by 1.5° about the lower edge of its feet (top out) or the upper one (bottom out),
+    // its feet run into a hook's finger either way.
+    let inset = FOOT_PROFILE[0].1;
+    let low = g.line(1, 1) + inset;
+    let high = g.line(1, 1) + BIN_GAP + BIN_SIZE - HOOK_LIFT - inset;
+    for (pivot, angle) in [(low, 1.5), (high, -1.5)] {
+        let tipped = part
+            .translate(Vec3::new(0.0, -pivot, -g.floor))
+            .rotate(angle, 0.0, 0.0)
+            .translate(Vec3::new(0.0, pivot, g.floor));
+        let hit = (&hooks ^ &tipped).volume();
+        assert!(hit > 0.01, "tipped {angle}° about y = {pivot:.1}: only {hit:.4} mm³ on the hooks");
+    }
 }
 
 #[test]
@@ -416,7 +480,7 @@ fn a_wall_holder_hangs_like_a_bin() {
     assert!(matches!(plan.parts[1].part, PartSpec::WallHolder { hooks: true, .. }));
     assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
     let (plate, part) = seated(&plan, &p);
-    assert!(overlap(&plate, &part, 0.0, 0.0) < 0.01);
+    assert!(overlap(&plate, &part, -BIN_GAP + 0.02, 0.0) < 0.01);
     assert!(overlap(&plate, &part, HOOK_LIFT, 0.0) < 0.01);
     assert!(overlap(&plate, &part, HOOK_LIFT, 3.0) < 0.01);
     assert!(overlap(&plate, &part, 0.0, 1.0) > 3.0);

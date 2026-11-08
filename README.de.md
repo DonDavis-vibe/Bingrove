@@ -48,10 +48,10 @@ Magnettaschen von unten.
 
 ### Wand: Teile, die einhängen
 
-Eine Platte an der Wand mit einem Haken und einem Federblatt in jeder Zelle. Wandteile sind oben
-4 mm kürzer: Du schiebst sie **bis zum Anschlag hoch, setzt sie gerade ein und lässt sie
-hinunterrutschen**. Die Haken halten sie dann gegen geradeaus Abziehen, und eine **Raste klickt
-ein**, damit das Teil nicht mitkommt, wenn du ein Werkzeug nach oben herausziehst. Zum
+Eine Platte an der Wand mit zwei Haken (unten und oben) und einem Federblatt in jeder Zelle.
+Wandteile sind oben 4 mm kürzer: Du schiebst sie **bis zum Anschlag hoch, setzt sie gerade ein
+und lässt sie hinunterrutschen**. Die Haken halten sie dann gegen geradeaus Abziehen und gegen
+Kippen, und eine **Raste klickt ein**, damit das Teil nicht mitkommt, wenn du ein Werkzeug nach oben herausziehst. Zum
 Herausnehmen hebst du das Teil fest an. Magnete helfen. Ohne Haken halten die Teile nur über
 Magnete, dann passt auch jeder Bin.
 
