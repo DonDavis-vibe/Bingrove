@@ -682,10 +682,10 @@ impl DrawerPanel {
                 tr("Wand", "Wall"),
                 Node::Label {
                     text: tf!(
-                        "{:.0} × {:.0} mm; Teile werden bis zum Anschlag ({:.0} mm) angehoben eingesetzt \
-                         und rutschen auf die Haken",
-                        "{:.0} × {:.0} mm; parts go in pushed up to their stop ({:.0} mm), and slide down \
-                         onto the hooks",
+                        "{:.0} × {:.0} mm; Teile werden bis zum Anschlag ({:.0} mm) angehoben eingesetzt, \
+                         rutschen auf die Haken und rasten ein",
+                        "{:.0} × {:.0} mm; parts go in pushed up to their stop ({:.0} mm), slide down onto \
+                         the hooks and click in",
                         d.width,
                         d.depth,
                         bingrove_core::spec::HOOK_LIFT
@@ -913,42 +913,46 @@ impl DrawerPanel {
                 submit: None,
             }
         };
-        let output = Node::Form {
-            id: "output".into(),
-            rows: vec![
-                row(
-                    tr("Drucker", "Printer"),
-                    Node::Select {
-                        id: "printer".into(),
-                        options: printers.iter().map(|(v, l)| Choice { value: v.clone(), label: l.clone() }).collect(),
-                        selected: s.project.bed.name.clone(),
-                        enabled: true,
+        let mut output_rows = vec![
+            row(
+                tr("Drucker", "Printer"),
+                Node::Select {
+                    id: "printer".into(),
+                    options: printers.iter().map(|(v, l)| Choice { value: v.clone(), label: l.clone() }).collect(),
+                    selected: s.project.bed.name.clone(),
+                    enabled: true,
+                },
+            ),
+            row(
+                tr("Drucklisten", "Print lists"),
+                select(
+                    "lists",
+                    &[
+                        ("both", tr("Teile und Druckbetten", "Parts and print beds")),
+                        ("parts", tr("nur Teile (STL × Anzahl)", "parts only (STL × quantity)")),
+                        ("beds", tr("nur Druckbetten (3MF)", "print beds only (3MF)")),
+                    ],
+                    match s.lists {
+                        ListMode::Both => "both",
+                        ListMode::Parts => "parts",
+                        ListMode::Beds => "beds",
                     },
                 ),
-                row(
-                    tr("Drucklisten", "Print lists"),
-                    select(
-                        "lists",
-                        &[
-                            ("both", tr("Teile und Druckbetten", "Parts and print beds")),
-                            ("parts", tr("nur Teile (STL × Anzahl)", "parts only (STL × quantity)")),
-                            ("beds", tr("nur Druckbetten (3MF)", "print beds only (3MF)")),
-                        ],
-                        match s.lists {
-                            ListMode::Both => "both",
-                            ListMode::Parts => "parts",
-                            ListMode::Beds => "beds",
-                        },
-                    ),
-                ),
-                row(tr("Magnetloch Ø", "Magnet hole Ø"), Node::mm("magnet_d", s.project.profile.magnet.d, 2.0, 12.0)),
-                row(
-                    tr("Magnetloch Tiefe", "Magnet hole depth"),
-                    Node::mm("magnet_h", s.project.profile.magnet.h, 0.5, 6.0),
-                ),
-            ],
-            submit: None,
-        };
+            ),
+            row(tr("Magnetloch Ø", "Magnet hole Ø"), Node::mm("magnet_d", s.project.profile.magnet.d, 2.0, 12.0)),
+            row(
+                tr("Magnetloch Tiefe", "Magnet hole depth"),
+                Node::mm("magnet_h", s.project.profile.magnet.h, 0.5, 6.0),
+            ),
+        ];
+        if s.project.options.kind == Kind::Wall {
+            // What the wall calibration blocks find out: the play round the hook, how firmly
+            // the latch holds (0 leaves it out).
+            let profile = &s.project.profile;
+            output_rows.push(row(tr("Hakenspiel", "Hook play"), Node::mm("hook_gap", profile.hook_gap, 0.1, 0.8)));
+            output_rows.push(row(tr("Raste", "Latch"), Node::mm("detent", profile.detent, 0.0, 1.0)));
+        }
+        let output = Node::Form { id: "output".into(), rows: output_rows, submit: None };
         let tab = |label: &str, children: Vec<Node>| Tab { label: label.into(), children };
         Node::Tabs {
             id: "left_tabs".into(),
@@ -2731,6 +2735,8 @@ impl GuestPanel for DrawerPanel {
                         }
                         ("magnet_d", Some(v)) => s.project.profile.magnet.d = v,
                         ("magnet_h", Some(v)) => s.project.profile.magnet.h = v,
+                        ("hook_gap", Some(v)) => s.project.profile.hook_gap = v,
+                        ("detent", Some(v)) => s.project.profile.detent = v,
                         ("model_id", _) => s.model_id = text.unwrap_or_default(),
                         ("model_down", _) => {
                             s.model_down = match text.as_deref() {

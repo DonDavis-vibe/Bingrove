@@ -49,6 +49,9 @@ pub struct Profile {
     pub peg_undersize: f64,
     /// Air around a wall plate's hook in the keyhole of a wall part's foot.
     pub hook_gap: f64,
+    /// How far a wall part's latch rib pushes the plate's spring blade aside as it passes:
+    /// more holds harder. 0 leaves the rib out.
+    pub detent: f64,
 }
 
 impl Default for Profile {
@@ -59,6 +62,7 @@ impl Default for Profile {
             seg: 64,
             peg_undersize: 0.3,
             hook_gap: 0.3,
+            detent: 0.5,
         }
     }
 }

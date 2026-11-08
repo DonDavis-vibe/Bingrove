@@ -117,9 +117,10 @@ pub fn plate(grid: &Grid, claims: &EdgeClaims, build: PlateBuild, p: &Profile) -
         return solid;
     }
     // A wall plate's hooks, one on every pocket floor, at the cell's lower edge.
-    let hook = super::wall::hook();
-    let hooks = (0..nx).flat_map(|i| (0..ny).map(move |j| (i, j)));
-    union(std::iter::once(solid).chain(hooks.map(|(i, j)| translate(&hook, [lx(i) + GRID / 2.0, ly(j), fl]))).collect())
+    // ... and the spring blade of its latch.
+    let hook = super::wall::hook() + super::wall::blade();
+    let cells = (0..nx).flat_map(|i| (0..ny).map(move |j| (i, j)));
+    union(std::iter::once(solid).chain(cells.map(|(i, j)| translate(&hook, [lx(i) + GRID / 2.0, ly(j), fl]))).collect())
 }
 
 /// Where a magnet sits along y in the cell centred on `cy`: `pos` from the centre, or on a wall

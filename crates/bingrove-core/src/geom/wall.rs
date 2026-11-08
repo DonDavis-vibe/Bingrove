@@ -106,6 +106,66 @@ pub fn keyhole(gap: f64) -> Solid {
     union(cuts)
 }
 
+/// How far along the sliding direction a flank `depth` deep runs: 45°, or 60° when `steep`.
+fn flank(depth: f64, steep: bool) -> f64 {
+    if steep { depth / 3f64.sqrt() } else { depth }
+}
+
+/// Length of the blade's nose along the wall: a steep lower flank (it holds), the flat and a
+/// 45° upper flank (the rib slides over it on the way down).
+fn nose_len() -> f64 {
+    flank(DETENT_NOSE, true) + DETENT_FLAT + flank(DETENT_NOSE, false)
+}
+
+/// The latch's spring blade in a cell's frame on the plate (like `hook`).
+pub fn blade() -> Solid {
+    let (x0, x1, n) = (-DETENT_T / 2.0, DETENT_T / 2.0, DETENT_NOSE);
+    let (y0, y1) = (DETENT_Y0, DETENT_Y0 + DETENT_LEN);
+    let ya = y1 - nose_len();
+    let pts = [
+        [x0, y0],
+        [x1, y0],
+        [x1, ya],
+        [x1 + n, ya + flank(n, true)],
+        [x1 + n, y1 - flank(n, false)],
+        [x1, y1],
+        [x0, y1],
+    ];
+    translate(&polygon_prism(&pts, 0.0, DETENT_H + 0.01, 8), [0.0, 0.0, -0.01])
+}
+
+/// The room the blade needs in a foot, in the cell frame of a part seated on the plate: its
+/// way from the lifted position down past the seat, with `gap` round it and room to bend
+/// away on its back. It runs straight out of the wall, so the way in is the same slot.
+fn blade_slot(gap: f64) -> Solid {
+    let x0 = -DETENT_T / 2.0 - DETENT_ROOM;
+    let x1 = DETENT_T / 2.0 + DETENT_NOSE + gap;
+    let y0 = DETENT_Y0 - HOOK_LIFT - HOOK_OVERTRAVEL - gap;
+    let y1 = DETENT_Y0 + DETENT_LEN + BIN_GAP + gap;
+    cuboid([x1 - x0, y1 - y0, DETENT_H + gap + 1.0], [x0, y0, -1.0])
+}
+
+/// The rib on the slot's wall that catches the blade's nose: just below the nose when the part
+/// is seated, standing `detent` into the nose's way. Coming down, its 45° flank pushes the
+/// blade aside until the nose snaps over it; lifting, its steep flank meets the nose's.
+fn latch_rib(gap: f64, detent: f64) -> Solid {
+    let wall = DETENT_T / 2.0 + DETENT_NOSE + gap;
+    let inner = DETENT_T / 2.0 + DETENT_NOSE - detent;
+    let depth = wall - inner;
+    // The steep flanks of rib and nose run parallel, `gap` apart along the wall.
+    let top = DETENT_Y0 + DETENT_LEN - nose_len() + flank(DETENT_NOSE + gap, true) - gap;
+    let (c, d) = (top - flank(depth, true), top - flank(depth, true) - DETENT_FLAT);
+    let bottom = d - flank(depth, false);
+    let pts = [[wall + 1.0, top], [wall, top], [inner, c], [inner, d], [wall, bottom], [wall + 1.0, bottom]];
+    translate(&polygon_prism(&pts, 0.0, DETENT_H + gap + 2.0, 8), [0.0, 0.0, -1.0])
+}
+
+/// Which feet carry the latch rib: the lowest row, at most the two outer ones, so a big part
+/// does not sit too tight.
+fn latched(i: u32, j: u32, cells: [u32; 2]) -> bool {
+    j == 0 && (i == 0 || i + 1 == cells[0])
+}
+
 /// From the frame of cell (i, j) on the plate into the print frame of a part `depth` deep.
 fn from_cell(s: &Solid, i: u32, j: u32, depth: f64) -> Solid {
     translate(&s.rotate(90.0, 0.0, 0.0), [BIN_SIZE / 2.0 + GRID * i as f64, depth, GRID * j as f64 - BIN_GAP])
@@ -144,11 +204,23 @@ fn block(cells: [u32; 2], units: u32, hooks: bool, magnets: MagnetMode, front: f
     let [w, d, h] = size(cells, units);
     let seg = p.seg;
     let foot = swept(BIN_SIZE, BIN_SIZE - HOOK_LIFT, BIN_R, &FOOT_PROFILE, (0.0, GRID / 2.0 - HOOK_LIFT / 2.0), seg);
-    let foot = if hooks { foot - keyhole(p.hook_gap) } else { foot };
+    let gap = p.hook_gap;
+    let (plain, with_rib) = if hooks {
+        let plain = subtract(foot.clone(), vec![keyhole(gap), blade_slot(gap)]);
+        let with_rib = if p.detent > 0.0 {
+            subtract(foot, vec![keyhole(gap), blade_slot(gap) - latch_rib(gap, p.detent)])
+        } else {
+            plain.clone()
+        };
+        (plain, with_rib)
+    } else {
+        (foot.clone(), foot)
+    };
     let mut parts = vec![outline(w, h, 0.0, [front, d - FOOT_H + 0.01], seg)];
     for i in 0..cells[0] {
         for j in 0..cells[1] {
-            parts.push(from_cell(&foot, i, j, d));
+            let foot = if latched(i, j, cells) { &with_rib } else { &plain };
+            parts.push(from_cell(foot, i, j, d));
         }
     }
     let hole = magnet_hole(p);
@@ -202,17 +274,24 @@ pub fn tray(b: &BinSpec, hooks: bool, p: &Profile) -> Part {
 /// A block of one cell with the hook's keyhole cut for `gap`, to find the gap that hangs well:
 /// two units deep, the gap engraved on the front.
 pub fn hook_test(gap: f64, p: &Profile) -> Part {
-    let profile = Profile { hook_gap: gap, ..p.clone() };
+    test_block(
+        &Profile { hook_gap: gap, ..p.clone() },
+        &format!("{gap:.1}"),
+        format!("kalibrierung_wand_haken_{gap:.1}.stl"),
+    )
+}
+
+/// A block of one cell whose latch rib stands `detent` into the blade's way, to find how firmly
+/// parts should click in: the value engraved on the front after an R.
+pub fn latch_test(detent: f64, p: &Profile) -> Part {
+    let name = format!("kalibrierung_wand_raste_{detent:.1}.stl");
+    test_block(&Profile { detent, ..p.clone() }, &format!("R{detent:.1}"), name)
+}
+
+fn test_block(profile: &Profile, text: &str, name: String) -> Part {
     let [w, _, h] = size([1, 1], 2);
-    let text = format!("{gap:.1}");
-    let solid = super::text::engrave_front(
-        block([1, 1], 2, true, MagnetMode::None, 0.0, &profile),
-        &text,
-        [w / 2.0, 0.0, h / 2.0],
-        6.0,
-        0.6,
-    );
-    Part::new(format!("kalibrierung_wand_haken_{gap:.1}.stl"), solid)
+    let block = block([1, 1], 2, true, MagnetMode::None, 0.0, profile);
+    Part::new(name, super::text::engrave_front(block, text, [w / 2.0, 0.0, h / 2.0], 6.0, 0.6))
 }
 
 /// How deep text goes into a face.
@@ -435,8 +514,8 @@ mod tests {
         };
         let flanks = foot(0.0) - foot(1.2);
         for gap in [0.2, 0.3, 0.4] {
-            let hit = (&keyhole(gap) ^ &flanks).volume();
-            assert!(hit < 0.01, "gap {gap}: the keyhole cuts {hit:.3} mm³ out of the foot's flanks");
+            let hit = (&(keyhole(gap) + blade_slot(gap)) ^ &flanks).volume();
+            assert!(hit < 0.01, "gap {gap}: keyhole and slot cut {hit:.3} mm³ out of the foot's flanks");
         }
     }
 

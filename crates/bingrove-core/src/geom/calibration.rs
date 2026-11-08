@@ -73,13 +73,18 @@ pub fn parts(p: &Profile) -> Vec<Part> {
     out.push(peg_bar(p));
     out.push(wall_cell(p));
     out.extend(HOOK_GAPS.iter().map(|&g| super::wall::hook_test(g, p)));
+    out.extend(LATCH_DETENTS.iter().map(|&d| super::wall::latch_test(d, p)));
     out
 }
 
 /// Air around the hook tried by the wall test blocks.
 pub const HOOK_GAPS: [f64; 3] = [0.2, 0.3, 0.4];
 
-/// One cell of a wall plate, floor with magnets and the hook, to hang the test blocks on.
+/// How far the latch rib of the wall test blocks pushes the blade aside.
+pub const LATCH_DETENTS: [f64; 3] = [0.3, 0.5, 0.7];
+
+/// One cell of a wall plate, floor with magnets, the hook and the latch blade, to hang the test
+/// blocks on.
 pub fn wall_cell(p: &Profile) -> Part {
     use crate::model::{Kind, PlateFloor, PlateOptions};
     let o =

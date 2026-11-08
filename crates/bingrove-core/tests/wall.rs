@@ -48,18 +48,25 @@ fn overlap(a: &Solid, b: &Solid, dy: f64, dz: f64) -> f64 {
     (a ^ &b.translate(Vec3::new(0.0, dy, dz))).volume()
 }
 
+/// The spring blade of the cell under the part at (x, y), in plate coordinates.
+fn blade_at(plan: &Plan, x: u32, y: u32) -> Solid {
+    let g = &plan.grid;
+    wall::blade().translate(Vec3::new(g.line(0, x) + 21.0, g.line(1, y), g.floor))
+}
+
 #[test]
-fn a_part_goes_in_lifted_slides_down_and_hangs() {
+fn a_part_goes_in_lifted_slides_down_clicks_and_hangs() {
     let p = Profile { seg: 32, ..Profile::default() };
     let plan = plan(&wall_project(true, vec![tray(1, 1, [1, 1])])).unwrap();
     let (plate, part) = seated(&plan, &p);
+    let blade = blade_at(&plan, 1, 1);
     // Seated, and settled down onto its lower foot faces: no overlap.
     assert!(overlap(&plate, &part, 0.0, 0.0) < 0.01, "seated: {}", overlap(&plate, &part, 0.0, 0.0));
     let settled = -BIN_GAP + 0.02;
     assert!(overlap(&plate, &part, settled, 0.0) < 0.01, "settled: {}", overlap(&plate, &part, settled, 0.0));
-    // Lifted, it goes straight in past the hook: pushed up to its stop (the foot's top meets the
-    // pocket) or anywhere a millimetre short of it ...
-    for lift in [HOOK_LIFT - 0.8, HOOK_LIFT, HOOK_LIFT + BIN_GAP] {
+    // Lifted, it goes straight in past hook and blade: pushed up to its stop (the foot's top
+    // meets the pocket) or anywhere well short of it ...
+    for lift in [2.6, HOOK_LIFT - 0.8, HOOK_LIFT, HOOK_LIFT + BIN_GAP] {
         for dz in [8.0, 6.0, 4.0, 2.5, 1.0, 0.0] {
             let v = overlap(&plate, &part, lift, dz);
             assert!(v < 0.01, "going in lifted by {lift}, {dz} mm out: {v} mm³");
@@ -68,19 +75,50 @@ fn a_part_goes_in_lifted_slides_down_and_hangs() {
     // ... past its stop the pocket's top holds it, and not lifted far enough the tooth meets the hook.
     assert!(overlap(&plate, &part, HOOK_LIFT + BIN_GAP + 0.3, 0.0) > 0.01, "no stop above");
     assert!(overlap(&plate, &part, 1.0, 1.5) > 1.0, "the tooth lets it in lifted by 1 mm");
-    // ... and slides down onto its seat.
-    for k in 0..=12 {
-        let dy = HOOK_LIFT - k as f64 * (HOOK_LIFT - settled) / 12.0;
-        let v = overlap(&plate, &part, dy, 0.0);
-        assert!(v < 0.01, "sliding down at {dy:.2} mm: {v} mm³");
+    // ... and slides down onto its seat. On the way the latch rib pushes the blade's nose aside
+    // (the blade bends, which a rigid overlap shows as a little volume), nothing else touches.
+    let mut click: f64 = 0.0;
+    for k in 0..=24 {
+        let dy = HOOK_LIFT - k as f64 * (HOOK_LIFT - settled) / 24.0;
+        let (all, nose) = (overlap(&plate, &part, dy, 0.0), overlap(&blade, &part, dy, 0.0));
+        assert!(all - nose < 0.01, "sliding down at {dy:.2} mm: {:.3} mm³ beside the blade", all - nose);
+        assert!(nose < 1.5, "sliding down at {dy:.2} mm: the rib bites {nose:.3} mm³ into the blade");
+        click = click.max(nose);
     }
-    // Hanging, pulling it straight out runs the feet into the hooks' fingers.
+    assert!(click > 0.2, "the rib never meets the blade: {click:.3} mm³");
+    // Hanging, pulling it straight out runs the feet into the hooks' fingers ...
     let pulled = overlap(&plate, &part, 0.0, 1.0);
     assert!(pulled > 5.0, "pulled out 1 mm: only {pulled} mm³ in the way");
     let pulled = overlap(&plate, &part, settled, 1.0);
     assert!(pulled > 5.0, "settled and pulled out 1 mm: only {pulled} mm³ in the way");
-    // Lifted again, it comes out.
+    // ... and lifting it brings the rib onto the nose's steep flank after a little play.
+    assert!(overlap(&plate, &part, settled + 0.3, 0.0) < 0.01, "no play before the latch");
+    let held = overlap(&blade, &part, settled + 0.9, 0.0);
+    assert!(held > 0.05, "lifted 0.9 mm the latch does not hold: {held:.3} mm³");
+    // Lifted to the top, it comes out.
     assert!(overlap(&plate, &part, HOOK_LIFT, 1.0) < 0.01);
+}
+
+#[test]
+fn without_a_rib_the_latch_lets_go_and_ribs_sit_in_the_lowest_outer_feet() {
+    let p = Profile { seg: 32, ..Profile::default() };
+    let loose = Profile { detent: 0.0, ..p.clone() };
+    let single = plan(&wall_project(true, vec![tray(1, 1, [1, 1])])).unwrap();
+    let (plate, part) = seated(&single, &loose);
+    for k in 0..=12 {
+        let dy = HOOK_LIFT - k as f64 * HOOK_LIFT / 12.0;
+        assert!(overlap(&plate, &part, dy, 0.0) < 0.01, "without a rib, sliding at {dy:.2}");
+    }
+    // A rib adds a little material to a foot: one in a single cell, two in a 3 x 2 part.
+    let volume = |cells: [u32; 2], p: &Profile| {
+        let plan = plan(&wall_project(true, vec![tray(0, 0, cells)])).unwrap();
+        let (_, part) = seated(&plan, p);
+        part.volume()
+    };
+    let one = volume([1, 1], &p) - volume([1, 1], &loose);
+    let many = volume([3, 2], &p) - volume([3, 2], &loose);
+    assert!(one > 0.5, "no rib in a single cell: {one:.3} mm³");
+    assert!((many - 2.0 * one).abs() < 0.05 * one, "a 3 x 2 part has {:.2} ribs", many / one);
 }
 
 #[test]
@@ -102,10 +140,13 @@ fn the_plate_has_a_hook_in_every_cell() {
     let without = plan(&wall_project(false, vec![])).unwrap();
     assert_eq!(with.parts[0].name, "wandplatte_1A_3x3_magnete_haken.stl");
     let volume = |plan: &Plan| all_parts(plan, &p)[0].mesh().unwrap().volume();
-    // The stem reaches 0.01 mm into the floor, which the plate has already.
-    let hook = wall::hook().volume() - bingrove_core::spec::HOOK_W * bingrove_core::spec::HOOK_STEM * 0.01;
+    // Hook and blade reach 0.01 mm into the floor, which the plate has already.
+    use bingrove_core::spec::{DETENT_LEN, DETENT_T, HOOK_STEM, HOOK_W};
+    let hook = wall::hook().volume() - HOOK_W * HOOK_STEM * 0.01;
+    let blade = wall::blade().volume() - DETENT_T * DETENT_LEN * 0.01;
     let added = volume(&with) - volume(&without);
-    assert!((added - 9.0 * hook).abs() < 0.5, "hooks add {added:.1} mm³, nine are {:.1}", 9.0 * hook);
+    let nine = 9.0 * (hook + blade);
+    assert!((added - nine).abs() < 0.5, "hooks and blades add {added:.1} mm³, nine are {nine:.1}");
     // The hook stays below the plate's top, inside the pocket.
     let hook_top = wall::hook().bounding_box().max.z;
     assert!(hook_top <= bingrove_core::spec::BP_H - 1.2, "{hook_top}");

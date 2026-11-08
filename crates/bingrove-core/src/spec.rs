@@ -119,6 +119,20 @@ pub const HOOK_LIFT: f64 = 4.0;
 /// goes in.
 pub const HOOK_OVERTRAVEL: f64 = 1.0;
 
+/// Wall plates: the spring blade of the latch, standing on every cell's pocket floor in the same
+/// frame as the hook, centred across the cell. `DETENT_T` thick and `DETENT_H` tall, it is
+/// anchored at its lower end `DETENT_Y0` and free `DETENT_LEN` higher up, where a nose sticks
+/// out `DETENT_NOSE` towards +x. The plate prints it standing, so it bends along its layers.
+pub const DETENT_T: f64 = 1.2;
+pub const DETENT_H: f64 = 3.0;
+pub const DETENT_Y0: f64 = 22.0;
+pub const DETENT_LEN: f64 = 10.0;
+pub const DETENT_NOSE: f64 = 0.8;
+/// Flat between the flanks of the nose and of the rib that catches it.
+pub const DETENT_FLAT: f64 = 0.2;
+/// Room beside the blade in a wall part's foot for it to bend away.
+pub const DETENT_ROOM: f64 = 1.0;
+
 /// Outer size of a bin covering `cells` grid cells along one axis.
 pub fn bin_outer(cells: u32) -> f64 {
     cells as f64 * GRID - (GRID - BIN_SIZE)
