@@ -47,10 +47,14 @@ connectors between its pieces and, for steel tops, magnet pockets underneath.
 
 ### Wall: parts that hang
 
-A plate on the wall with a hook in every cell. Wall parts are 3 mm shorter at the top: you put
-them in **lifted by 3 mm, let them slide down**, and the hooks keep them from being pulled
-straight off. Lift a part to take it out. Magnets help. Without hooks the parts hold by magnets
-alone, and then any bin fits.
+A plate on the wall with a hook and a spring blade in every cell. Wall parts are 4 mm shorter
+at the top: you **push them up to their stop, put them in straight and let them slide down**.
+The hooks then keep them from being pulled straight off, and a **latch clicks in**, so a part
+does not come along when you pull a tool out upwards. Lift a part firmly to take it out.
+Magnets help. Without hooks the parts hold by magnets alone, and then any bin fits.
+
+How firmly the latch holds and how much play the hook has are set under *Output* (*Latch*,
+*Hook play*); the calibration pieces show what suits your printer.
 
 The plate is screwed on (holes in the middle of the corner cells) or hung on an **IKEA Skadis**
 board with printed hooks that slide into its top edge. Wall parts print lying on their bottom
@@ -118,6 +122,9 @@ stroke font (Hershey Simplex) on the label shelf or the front.
 | Troughs | pens and screwdrivers lying | diameter, length, handle |
 | Bits, tape | 1/4" bits, tape rolls on posts | count, roll size |
 
+Besides open **trays**, a wall takes **hoppers**: low at the front, the sides slanting up to the
+wall, like workshop storage bins.
+
 **Wall holders** hang on a wall plate:
 
 | Holder | For | You set |
@@ -125,14 +132,18 @@ stroke font (Hershey Simplex) on the label shelf or the front.
 | Standing holes | screwdrivers (hanging through), pens, files | diameter, depth, count, lean away from the wall |
 | Leaning sockets | extension bars, hex keys | a size per place (engraved), lean towards the wall, steps |
 | V-slots | pliers and scissors standing jaws down | thickness × depth per slot, length, closed front |
+| Hooks and brackets | a hammer (fork), cables and hoses (bracket), anything that hangs | arms, gap, reach, tip, arm size |
+| Quivers | rulers, long bits, brushes, pens, spray cans | Ø and text per tube, depth, wall, open below |
 
 Sets include sockets on 1/4", 3/8" and 1/2" (metric and inch, in holes or on pegs), hex keys,
 drills, screwdrivers, extension bars, ratchets, pliers, scissors, wrenches 6–24, cans, bottles
-and spools, and the same for walls.
+and spools, and the same for walls, plus single and double hooks, a hammer fork, a cable bracket
+and quivers for pens, brushes, long bits and spray cans.
 
 **Calibration pieces** dial in a printer before the big print: a magnet-hole ladder, a fit test
 with three bins of different clearance, a connector pair, a bar of socket pegs, and a wall cell
-with three blocks of different clearance around the hook.
+with six blocks: three with different clearance around the hook, three with a firmer or
+softer latch.
 
 **Output**: an STL per distinct part with its quantity, a 3MF per print bed, the assembly as 3MF
 to look at (a wall stands up), and the project file.
@@ -219,6 +230,7 @@ drawer logic grew out of a Python script for two drawers, whose 25 parts the tes
 - The outline of a library model is its convex hull, so hollows in it get filled.
 - Wall parts print on their bottom face, so round holes come out slightly oval. With hooks on
   the plate only wall parts fit.
+- The latch's spring blades are made for PLA; PETG creeps less if parts stay on for years.
 - Skadis hooks hold the plate by its top edge only (the board's slots are 40 mm apart, the grid
   42 mm).
 - The panel follows Meshgrove's language, German or English. File, folder and print list names

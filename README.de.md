@@ -48,10 +48,15 @@ Magnettaschen von unten.
 
 ### Wand: Teile, die einhängen
 
-Eine Platte an der Wand mit einem Haken in jeder Zelle. Wandteile sind oben 3 mm kürzer: Du
-setzt sie **3 mm angehoben ein und lässt sie hinunterrutschen**, dann halten die Haken sie gegen
-geradeaus Abziehen. Zum Herausnehmen hebst du das Teil an. Magnete helfen. Ohne Haken halten die
-Teile nur über Magnete, dann passt auch jeder Bin.
+Eine Platte an der Wand mit einem Haken und einem Federblatt in jeder Zelle. Wandteile sind oben
+4 mm kürzer: Du schiebst sie **bis zum Anschlag hoch, setzt sie gerade ein und lässt sie
+hinunterrutschen**. Die Haken halten sie dann gegen geradeaus Abziehen, und eine **Raste klickt
+ein**, damit das Teil nicht mitkommt, wenn du ein Werkzeug nach oben herausziehst. Zum
+Herausnehmen hebst du das Teil fest an. Magnete helfen. Ohne Haken halten die Teile nur über
+Magnete, dann passt auch jeder Bin.
+
+Wie fest die Raste hält und wie viel Spiel der Haken hat, stellst du unter *Ausgabe* ein
+(*Raste*, *Hakenspiel*); die Kalibrierteile zeigen, was zu deinem Drucker passt.
 
 Die Platte wird angeschraubt (Löcher in der Mitte der Eckzellen) oder mit gedruckten Haken, die
 in ihre Oberkante geschoben werden, an eine **IKEA-Skadis**-Lochplatte gehängt. Wandteile
@@ -125,6 +130,9 @@ bleiben änderbar:
 | Rinnen | Stifte und Schraubendreher liegend | Durchmesser, Länge, Griff |
 | Bits, Tape | 1/4"-Bits, Tape-Rollen auf Dornen | Anzahl, Rollengröße |
 
+An der Wand gibt es neben offenen **Ablagen** auch **Schütten**: vorne niedrig, die Seiten
+schräg bis zur Wand, wie Lagersichtkästen.
+
 **Wandhalter** hängen an einer Wandplatte:
 
 | Halter | Für | Du stellst ein |
@@ -132,14 +140,19 @@ bleiben änderbar:
 | Löcher stehend | Schraubendreher (hängen durch), Stifte, Feilen | Durchmesser, Tiefe, Anzahl, Neigung von der Wand weg |
 | Fassungen lehnend | Verlängerungen, Inbus | Größe je Platz (graviert), Neigung zur Wand, Stufen |
 | V-Schlitze | Zangen und Scheren mit den Backen nach unten | Dicke × Tiefe je Schlitz, Länge, vorne geschlossen |
+| Haken und Bügel | Hammer (Gabel), Kabel und Schläuche (Bügel), alles zum Aufhängen | Arme, Abstand, Ausladung, Spitze, Armstärke |
+| Köcher | Lineale, lange Bits, Pinsel, Stifte, Spraydosen | Ø und Text je Röhre, Tiefe, Wand, unten offen |
 
 Sätze gibt es für Nüsse auf 1/4", 3/8" und 1/2" (metrisch und zöllig, in Löchern oder auf
 Steckern), Inbus, Bohrer, Schraubendreher, Verlängerungen, Ratschen, Zangen, Scheren,
-Maulschlüssel 6–24, Dosen, Flaschen und Kabelrollen, und dasselbe für Wände.
+Maulschlüssel 6–24, Dosen, Flaschen und Kabelrollen, und dasselbe für Wände, dort dazu Einzel-
+und Doppelhaken, eine Hammergabel, einen Kabelbügel und Köcher für Stifte, Pinsel, lange Bits
+und Spraydosen.
 
 **Kalibrierteile** stellen den Drucker vor dem großen Druck ein: eine Magnetloch-Leiter, ein
 Passungstest mit drei Bins unterschiedlicher Luft, ein Verbinder-Paar, ein Riegel mit
-Nuss-Steckern und eine Wandzelle mit drei Klötzen unterschiedlicher Luft um den Haken.
+Nuss-Steckern und eine Wandzelle mit sechs Klötzen: drei mit unterschiedlicher Luft um den Haken,
+drei mit unterschiedlich fester Raste.
 
 **Ausgabe**: eine STL je Teileart mit Stückzahl, eine 3MF je Druckbett, der Zusammenbau als 3MF
 zum Anschauen (eine Wand steht aufrecht) und die Projektdatei.
@@ -227,6 +240,8 @@ auf ±0,01 mm reproduzieren.
 - Der Umriss eines Bibliotheksmodells ist seine konvexe Hülle, Einbuchtungen werden aufgefüllt.
 - Wandteile drucken auf ihrer Unterseite, runde Löcher werden daher leicht oval. Mit Haken
   passen nur Wandteile auf die Platte.
+- Die Federblätter der Raste sind für PLA ausgelegt; PETG kriecht weniger, wenn Teile jahrelang
+  hängen.
 - Skadis-Haken halten die Platte nur an ihrer Oberkante (die Schlitze liegen 40 mm auseinander,
   das Raster 42 mm).
 - Das Panel folgt der Sprache von Meshgrove, Deutsch oder Englisch. Datei-, Ordner- und
