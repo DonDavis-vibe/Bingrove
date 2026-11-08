@@ -57,11 +57,17 @@ fn a_part_goes_in_lifted_slides_down_and_hangs() {
     assert!(overlap(&plate, &part, 0.0, 0.0) < 0.01, "seated: {}", overlap(&plate, &part, 0.0, 0.0));
     let settled = -BIN_GAP + 0.02;
     assert!(overlap(&plate, &part, settled, 0.0) < 0.01, "settled: {}", overlap(&plate, &part, settled, 0.0));
-    // Lifted, it goes straight in past the hook ...
-    for dz in [8.0, 6.0, 4.0, 2.5, 1.0, 0.0] {
-        let v = overlap(&plate, &part, HOOK_LIFT, dz);
-        assert!(v < 0.01, "going in lifted, {dz} mm out: {v} mm³");
+    // Lifted, it goes straight in past the hook: pushed up to its stop (the foot's top meets the
+    // pocket) or anywhere a millimetre short of it ...
+    for lift in [HOOK_LIFT - 0.8, HOOK_LIFT, HOOK_LIFT + BIN_GAP] {
+        for dz in [8.0, 6.0, 4.0, 2.5, 1.0, 0.0] {
+            let v = overlap(&plate, &part, lift, dz);
+            assert!(v < 0.01, "going in lifted by {lift}, {dz} mm out: {v} mm³");
+        }
     }
+    // ... past its stop the pocket's top holds it, and not lifted far enough the tooth meets the hook.
+    assert!(overlap(&plate, &part, HOOK_LIFT + BIN_GAP + 0.3, 0.0) > 0.01, "no stop above");
+    assert!(overlap(&plate, &part, 1.0, 1.5) > 1.0, "the tooth lets it in lifted by 1 mm");
     // ... and slides down onto its seat.
     for k in 0..=12 {
         let dy = HOOK_LIFT - k as f64 * (HOOK_LIFT - settled) / 12.0;
@@ -70,9 +76,9 @@ fn a_part_goes_in_lifted_slides_down_and_hangs() {
     }
     // Hanging, pulling it straight out runs the feet into the hooks' fingers.
     let pulled = overlap(&plate, &part, 0.0, 1.0);
-    assert!(pulled > 3.0, "pulled out 1 mm: only {pulled} mm³ in the way");
+    assert!(pulled > 5.0, "pulled out 1 mm: only {pulled} mm³ in the way");
     let pulled = overlap(&plate, &part, settled, 1.0);
-    assert!(pulled > 3.0, "settled and pulled out 1 mm: only {pulled} mm³ in the way");
+    assert!(pulled > 5.0, "settled and pulled out 1 mm: only {pulled} mm³ in the way");
     // Lifted again, it comes out.
     assert!(overlap(&plate, &part, HOOK_LIFT, 1.0) < 0.01);
 }
@@ -102,7 +108,7 @@ fn the_plate_has_a_hook_in_every_cell() {
     assert!((added - 9.0 * hook).abs() < 0.5, "hooks add {added:.1} mm³, nine are {:.1}", 9.0 * hook);
     // The hook stays below the plate's top, inside the pocket.
     let hook_top = wall::hook().bounding_box().max.z;
-    assert!(hook_top < bingrove_core::spec::BP_H - 1.5, "{hook_top}");
+    assert!(hook_top <= bingrove_core::spec::BP_H - 1.2, "{hook_top}");
     // Without parts every cell stays free.
     assert_eq!(with.placements.len(), 0);
 }

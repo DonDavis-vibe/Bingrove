@@ -682,10 +682,13 @@ impl DrawerPanel {
                 tr("Wand", "Wall"),
                 Node::Label {
                     text: tf!(
-                        "{:.0} × {:.0} mm; Teile werden 3 mm angehoben eingesetzt und rutschen auf die Haken",
-                        "{:.0} × {:.0} mm; parts go in lifted by 3 mm and slide down onto the hooks",
+                        "{:.0} × {:.0} mm; Teile werden bis zum Anschlag ({:.0} mm) angehoben eingesetzt \
+                         und rutschen auf die Haken",
+                        "{:.0} × {:.0} mm; parts go in pushed up to their stop ({:.0} mm), and slide down \
+                         onto the hooks",
                         d.width,
-                        d.depth
+                        d.depth,
+                        bingrove_core::spec::HOOK_LIFT
                     ),
                     style: TextStyle::Small,
                 },

@@ -22,30 +22,88 @@ use crate::profile::Profile;
 use crate::spec::*;
 
 /// Up the wall from a cell's lower grid line, where a wall plate's and a wall part's magnets
-/// sit: symmetric about the foot, which is `HOOK_LIFT` shorter at the top.
-pub const WALL_MAGNET_Y: [f64; 2] = [7.5, 31.5];
+/// sit: 12 mm either side of the middle of the foot, which is `HOOK_LIFT` shorter at the top.
+pub const WALL_MAGNET_Y: [f64; 2] = [FOOT_MID - 12.0, FOOT_MID + 12.0];
+const FOOT_MID: f64 = BIN_GAP + (BIN_SIZE - HOOK_LIFT) / 2.0;
 
 pub use crate::spec::wall_size as size;
+
+/// The hook's side view (y up the wall, z out of it) as convex pieces: the stem, the gusset
+/// with the root of the finger, and the rest of the finger with its tip chamfered underneath.
+fn hook_pieces() -> [Vec<[f64; 2]>; 3] {
+    let (y0, s, r, h) = (HOOK_Y0, HOOK_STEM, HOOK_REACH, HOOK_H);
+    let (under, g, tip) = (HOOK_H - HOOK_FINGER, HOOK_GUSSET, 0.5);
+    [
+        vec![[y0, -0.01], [y0 + s, -0.01], [y0 + s, h], [y0, h]],
+        vec![[y0 + s, under - g], [y0 + s + g, under], [y0 + s + g, h], [y0 + s, h]],
+        vec![[y0 + s + g, under], [y0 + r - tip, under], [y0 + r, under + tip], [y0 + r, h], [y0 + s + g, h]],
+    ]
+}
+
+/// A side view (y, z), counter-clockwise, made a solid across x, `half` either side of the
+/// cell centre.
+fn across(pts: &[[f64; 2]], half: f64) -> Solid {
+    // Extruded along z from the (y, z) outline drawn in the xy-plane, then (a, b, c) → (c, a, b).
+    translate(&polygon_prism(pts, 0.0, 2.0 * half, 8).rotate(90.0, 0.0, 90.0), [-half, 0.0, 0.0])
+}
 
 /// The hook in a cell's frame on the plate: x from the cell centre, y up the wall from the
 /// cell's lower grid line, z out of the wall from the pocket floor.
 pub fn hook() -> Solid {
-    let x = HOOK_W / 2.0;
-    let stem = cuboid([2.0 * x, HOOK_STEM, HOOK_H + 0.01], [-x, HOOK_Y0, -0.01]);
-    let finger = cuboid([2.0 * x, HOOK_REACH, HOOK_FINGER], [-x, HOOK_Y0, HOOK_H - HOOK_FINGER]);
-    stem + finger
+    union(hook_pieces().iter().map(|piece| across(piece, HOOK_W / 2.0)).collect())
+}
+
+/// The convex hull of points in a plane (counter-clockwise).
+fn hull2d(mut pts: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
+    pts.sort_by(|a, b| a[0].total_cmp(&b[0]).then(a[1].total_cmp(&b[1])));
+    pts.dedup();
+    let cross = |o: [f64; 2], a: [f64; 2], b: [f64; 2]| (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    let mut out: Vec<[f64; 2]> = Vec::new();
+    for pass in 0..2 {
+        let start = out.len();
+        let iter: Box<dyn Iterator<Item = &[f64; 2]>> =
+            if pass == 0 { Box::new(pts.iter()) } else { Box::new(pts.iter().rev()) };
+        for &p in iter {
+            while out.len() >= start + 2 && cross(out[out.len() - 2], out[out.len() - 1], p) <= 0.0 {
+                out.pop();
+            }
+            out.push(p);
+        }
+        out.pop();
+    }
+    out
 }
 
 /// The room a hook needs in a foot, in the cell frame of a part seated on the plate, with
-/// `gap` all round: the hook's way from `HOOK_LIFT` lower (the part goes in lifted) up past its
-/// seat by the air under the part (it settles onto its lower foot faces).
+/// `gap` all round. The part goes in straight while lifted by `HOOK_LIFT` (up to
+/// `HOOK_OVERTRAVEL` more), so the hook comes in from below through the channel its shadow cuts;
+/// then the part slides down past its seat by the air under it (it settles onto its lower foot
+/// faces), and each piece of the hook sweeps its way up the foot. What is left under the
+/// finger is the tooth that keeps the part from being pulled straight out.
 pub fn keyhole(gap: f64) -> Solid {
-    let x = HOOK_W / 2.0 + gap;
-    let y0 = HOOK_Y0 - HOOK_LIFT - gap;
-    let way = HOOK_LIFT + BIN_GAP + 2.0 * gap;
-    let stem = cuboid([2.0 * x, HOOK_STEM + way, HOOK_H + gap + 1.0], [-x, y0, -1.0]);
-    let finger = cuboid([2.0 * x, HOOK_REACH + way, HOOK_FINGER + 2.0 * gap], [-x, y0, HOOK_H - HOOK_FINGER - gap]);
-    stem + finger
+    let half = HOOK_W / 2.0 + gap;
+    let (low, high) = (-(HOOK_LIFT + HOOK_OVERTRAVEL), BIN_GAP);
+    let mut cuts: Vec<Solid> = hook_pieces()
+        .iter()
+        .enumerate()
+        .map(|(i, piece)| {
+            let mut pts = Vec::new();
+            for &[y, z] in piece {
+                // The stem stands on the floor: its way is open to the foot's underside.
+                let z_low = if i == 0 && z < 0.0 { -1.0 } else { z - gap };
+                for dy in [low - gap, high + gap] {
+                    pts.push([y + dy, z_low]);
+                    pts.push([y + dy, z + gap]);
+                }
+            }
+            across(&hull2d(pts), half)
+        })
+        .collect();
+    // The way in: lifted by at least `lift_in`, the whole hook passes below the tooth.
+    let lift_in = HOOK_REACH - HOOK_STEM + 2.0 * gap;
+    let (y0, y1) = (HOOK_Y0 + low - gap, HOOK_Y0 + HOOK_REACH - lift_in + gap);
+    cuts.push(cuboid([2.0 * half, y1 - y0, HOOK_H + gap + 1.0], [-half, y0, -1.0]));
+    union(cuts)
 }
 
 /// From the frame of cell (i, j) on the plate into the print frame of a part `depth` deep.
@@ -344,4 +402,47 @@ pub fn skadis_hook_at(x: f64, top: f64, p: &Profile) -> Solid {
         [-w, SKADIS_STEM - SKADIS_BAR - SKADIS_LEG, -behind - SKADIS_T],
     );
     translate(&union(vec![tab, strip, bar, leg]), [x, top, 0.0])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_hook_stands_where_its_constants_say() {
+        let b = hook().bounding_box();
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+        assert!(near(b.min.x, -HOOK_W / 2.0) && near(b.max.x, HOOK_W / 2.0), "{b:?}");
+        assert!(near(b.min.y, HOOK_Y0) && near(b.max.y, HOOK_Y0 + HOOK_REACH), "{b:?}");
+        assert!(near(b.min.z, -0.01) && near(b.max.z, HOOK_H), "{b:?}");
+        // Stem, gusset and finger, nothing else.
+        let side = HOOK_STEM * HOOK_H
+            + HOOK_GUSSET * HOOK_FINGER
+            + HOOK_GUSSET * HOOK_GUSSET / 2.0
+            + (HOOK_REACH - HOOK_STEM - HOOK_GUSSET) * HOOK_FINGER
+            - 0.5 * 0.5 / 2.0
+            + HOOK_STEM * 0.01;
+        assert!((hook().volume() - side * HOOK_W).abs() < 1e-3, "{} vs {}", hook().volume(), side * HOOK_W);
+    }
+
+    #[test]
+    fn the_keyhole_keeps_clear_of_the_foot_flanks() {
+        // The foot of a cell and the same foot pulled in by 1.2 mm all round: between them the
+        // flanks, which the keyhole must not touch (it opens only through the underside).
+        let foot = |inset: f64| {
+            let (w, h) = (BIN_SIZE - 2.0 * inset, BIN_SIZE - HOOK_LIFT - 2.0 * inset);
+            swept(w, h, BIN_R - inset, &FOOT_PROFILE, (0.0, GRID / 2.0 - HOOK_LIFT / 2.0), 32)
+        };
+        let flanks = foot(0.0) - foot(1.2);
+        for gap in [0.2, 0.3, 0.4] {
+            let hit = (&keyhole(gap) ^ &flanks).volume();
+            assert!(hit < 0.01, "gap {gap}: the keyhole cuts {hit:.3} mm³ out of the foot's flanks");
+        }
+    }
+
+    #[test]
+    fn hull_of_a_square_and_a_point_inside() {
+        let h = hull2d(vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.5, 0.5]]);
+        assert_eq!(h, vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
+    }
 }

@@ -103,15 +103,21 @@ pub const CONNECTOR_WALL: f64 = 1.2;
 /// Wall plates: the hook standing on every cell's pocket floor, in the plate's frame (x across
 /// the cell from its centre, y up the wall from the cell's lower grid line, z out of the wall
 /// from the pocket floor). Its stem runs from `HOOK_Y0` to `HOOK_Y0 + HOOK_STEM`, the finger on top
-/// reaches up to `HOOK_Y0 + HOOK_REACH` and is `HOOK_FINGER` thick; `HOOK_H` tall in all.
-pub const HOOK_W: f64 = 8.0;
-pub const HOOK_Y0: f64 = 7.5;
+/// reaches up to `HOOK_Y0 + HOOK_REACH` and is `HOOK_FINGER` thick; `HOOK_H` tall in all. Under
+/// the finger a 45° gusset `HOOK_GUSSET` long joins it to the stem, so the plate prints the
+/// finger with only a short free overhang.
+pub const HOOK_W: f64 = 10.0;
+pub const HOOK_Y0: f64 = 10.0;
 pub const HOOK_STEM: f64 = 2.5;
-pub const HOOK_REACH: f64 = 4.5;
-pub const HOOK_FINGER: f64 = 1.2;
-pub const HOOK_H: f64 = 3.0;
+pub const HOOK_REACH: f64 = 5.0;
+pub const HOOK_FINGER: f64 = 1.4;
+pub const HOOK_H: f64 = 3.4;
+pub const HOOK_GUSSET: f64 = 1.0;
 /// How far a wall part is lifted to go in past the hooks; it is that much shorter at the top.
-pub const HOOK_LIFT: f64 = 3.0;
+pub const HOOK_LIFT: f64 = 4.0;
+/// How far the keyhole runs past the lifted position, so a part pushed up to its stop still
+/// goes in.
+pub const HOOK_OVERTRAVEL: f64 = 1.0;
 
 /// Outer size of a bin covering `cells` grid cells along one axis.
 pub fn bin_outer(cells: u32) -> f64 {
