@@ -11,6 +11,12 @@ Plugins*. It needs a Meshgrove with the plugin system (0.8.0 or newer).
   check if nothing arrives, instead of a success message that also showed when Meshgrove had
   refused them. From Meshgrove 0.8.2 on, the real result replaces that line: in the library,
   waiting for review, refused (with the setting to change) or failed.
+- Plate connectors no longer collide where four pieces meet. They sat next to the start of
+  each cut, so at a crossing the tabs from below and from the left ended up in the same corner
+  of the fourth piece, and a pocket cut into the countersink of the corner screw. Now they sit
+  in the middle of every other cell along a cut, half a cell from any crossing and screw; on a
+  skeleton floor the pocket keeps floor around it. Plates printed with earlier versions do not
+  fit plates printed with this one.
 
 ## 0.4.0 – 2026-11-03
 

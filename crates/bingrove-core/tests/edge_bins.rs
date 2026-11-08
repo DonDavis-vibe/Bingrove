@@ -93,6 +93,19 @@ fn a_mounted_surface_assembles_from_its_pieces() {
     let pulled = (&placed[0] ^ &placed[1].translate(Vec3::new(1.0, 0.0, 0.0))).volume();
     assert!(pulled > 1.0, "the dovetail lets go: {pulled:.4} mm³");
     let cut = plan.grid.line(0, plan.split[0][0]);
+    // The first pocket sits in the middle of the first cell along the cut. The skeleton floor's
+    // cross cut-out reaches to 3.35 mm from the cut there; around the pocket the floor stays.
+    {
+        use bingrove_core::spec::{CONNECTOR_DEPTH, CONNECTOR_GAP, CONNECTOR_HEAD, CONNECTOR_WALL};
+        let (fl, y) = (plan.grid.floor, plan.grid.line(1, 0) + 21.0);
+        let half = CONNECTOR_HEAD / 2.0 + CONNECTOR_GAP + CONNECTOR_WALL;
+        let reach = CONNECTOR_DEPTH + CONNECTOR_GAP + CONNECTOR_WALL;
+        let around = bingrove_core::geom::kernel::cuboid([reach, 2.0 * half, fl], [cut, y - half, 0.0]);
+        let pocket_bound = (CONNECTOR_DEPTH + CONNECTOR_GAP) * (CONNECTOR_HEAD + 2.0 * CONNECTOR_GAP) * fl;
+        let kept = (&placed[1] ^ &around).volume();
+        let least = around.volume() - pocket_bound;
+        assert!(kept > least, "the floor around the pocket is missing: {kept:.1} of at least {least:.1} mm³");
+    }
     let left = placed[0].bounding_box();
     assert!(left.max.x > cut + 3.5, "the left piece carries the tab: {} vs cut {cut}", left.max.x);
     assert!((placed[1].bounding_box().min.x - cut).abs() < 1e-6, "the right piece starts at the cut");
@@ -102,6 +115,41 @@ fn a_mounted_surface_assembles_from_its_pieces() {
     let v_plain: f64 = all_parts(&plan_plain, &profile).iter().map(|p| p.solid.volume()).sum();
     let v_mount: f64 = pieces.iter().map(|p| p.solid.volume()).sum();
     assert!(v_mount < v_plain - 100.0, "screw holes missing: {v_mount} vs {v_plain}");
+}
+
+#[test]
+fn connectors_never_meet_where_four_pieces_meet() {
+    use bingrove_core::model::{Kind, Mount, PlateStyle};
+    let profile = Profile::default();
+    // 6 x 4 cells cut into 2 x 2 cell pieces: six pieces in three columns and two rows, so two
+    // crossings where four pieces meet. Once with a skeleton floor, once full with magnets.
+    let options = |floor, style| PlateOptions {
+        kind: Kind::Surface,
+        floor,
+        style,
+        mount: Mount { screws: true, connectors: true, ..Mount::default() },
+        split: Some([vec![2, 2, 2], vec![2, 2]]),
+        ..PlateOptions::default()
+    };
+    for options in [options(PlateFloor::Solid, PlateStyle::Skeleton), options(PlateFloor::Magnets, PlateStyle::Full)] {
+        let project = DrawerProject {
+            drawer: DrawerSpec { name: "Bank".into(), width: 252.0, depth: 168.0, height: 100.0 },
+            options,
+            ..DrawerProject::default()
+        };
+        let plan = plan(&project).unwrap();
+        assert_eq!(plan.split, [vec![2, 2, 2], vec![2, 2]]);
+        let pieces = baseplate::pieces_of(&plan.grid, &plan.claims, &plan.pieces, plan.plate, &profile);
+        let placed: Vec<Solid> =
+            pieces.iter().map(|p| p.solid.translate(Vec3::new(p.origin[0], p.origin[1], 0.0))).collect();
+        for (i, a) in placed.iter().enumerate() {
+            assert!(pieces[i].mesh().unwrap().is_closed(), "{} is not watertight", pieces[i].name);
+            for (j, b) in placed.iter().enumerate().skip(i + 1) {
+                let hit = (a ^ b).volume();
+                assert!(hit < 1e-3, "pieces {i} and {j} overlap by {hit:.4} mm³");
+            }
+        }
+    }
 }
 
 #[test]

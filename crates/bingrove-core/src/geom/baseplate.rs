@@ -154,8 +154,9 @@ pub fn pieces_of(grid: &Grid, claims: &EdgeClaims, pieces: &[PlatePiece], build:
                     piece.col > 0 && has(piece.row, piece.col - 1),
                     piece.row > 0 && has(piece.row - 1, piece.col),
                 ];
-                let (tabs, pockets) = connectors(grid, piece, fl, p, sides);
-                solid = subtract(union(std::iter::once(solid).chain(tabs).collect()), pockets);
+                let skeleton = build.style == PlateStyle::Skeleton;
+                let [tabs, floor, pockets] = connectors(grid, piece, fl, skeleton, sides);
+                solid = subtract(union(std::iter::once(solid).chain(tabs).chain(floor).collect()), pockets);
             }
             if build.wall && build.mount.skadis && piece.row == top_row && fl > 0.0 {
                 // Pockets in the top edge for the Skadis hooks, open towards the wall.
@@ -176,41 +177,47 @@ pub fn pieces_of(grid: &Grid, claims: &EdgeClaims, pieces: &[PlatePiece], build:
         .collect()
 }
 
-/// Half the side of the floor pad at a cell corner: what the cross cut-out leaves standing.
-fn pad(p: &Profile) -> f64 {
-    let a = p.magnet.pos - p.magnet.d / 2.0 - p.magnet.wall;
-    GRID / 2.0 - a
-}
-
-/// Countersunk screw holes where the piece's four outer corner cells have their outermost
-/// magnet position (in their middle on a wall plate, clear of the hooks), through the floor.
+/// Countersunk screw holes at `screw_spots`, through the floor.
 fn screw_holes(grid: &Grid, piece: &PlatePiece, fl: f64, wall: bool, p: &Profile) -> Vec<Solid> {
-    let [fx, fy] = piece.first;
-    let [cx, cy] = piece.cells;
-    let (m_pos, seg) = (if wall { 0.0 } else { p.magnet.pos }, p.seg);
+    let seg = p.seg;
     let sink = (SCREW_HEAD - SCREW_D) / 2.0;
     let hole = cylinder(fl + 2.0, SCREW_D / 2.0, SCREW_D / 2.0, seg)
         + translate(&cylinder(sink, SCREW_D / 2.0, SCREW_HEAD / 2.0, seg), [0.0, 0.0, fl + 1.0 - sink])
         + translate(&cylinder(1.0, SCREW_HEAD / 2.0, SCREW_HEAD / 2.0, seg), [0.0, 0.0, fl + 1.0]);
+    screw_spots(grid, piece, wall, p).into_iter().map(|[x, y]| translate(&hole, [x, y, -1.0])).collect()
+}
+
+/// Where the screws go: at the outermost magnet position of the piece's four outer corner cells,
+/// or in their middle on a wall plate, clear of the hooks.
+fn screw_spots(grid: &Grid, piece: &PlatePiece, wall: bool, p: &Profile) -> Vec<[f64; 2]> {
+    let [fx, fy] = piece.first;
+    let [cx, cy] = piece.cells;
+    let m_pos = if wall { 0.0 } else { p.magnet.pos };
     let mut out = Vec::new();
     for (i, sx) in [(fx, -1.0), (fx + cx - 1, 1.0)] {
         for (j, sy) in [(fy, -1.0), (fy + cy - 1, 1.0)] {
-            let x = grid.line(0, i) + GRID / 2.0 + sx * m_pos;
-            let y = grid.line(1, j) + GRID / 2.0 + sy * m_pos;
-            out.push(translate(&hole, [x, y, -1.0]));
+            out.push([grid.line(0, i) + GRID / 2.0 + sx * m_pos, grid.line(1, j) + GRID / 2.0 + sy * m_pos]);
         }
     }
     out
 }
 
+/// Where the connectors sit along a cut: in the middle of every other cell of the piece's side,
+/// `first` and `cells` counted along `axis`. Half a cell from either end of the cut, they keep
+/// clear of the crossing cut and its connectors, of the screws in the corner cells and of the
+/// magnets.
+pub(crate) fn connector_spots(grid: &Grid, axis: usize, first: u32, cells: u32) -> Vec<f64> {
+    (first..first + cells).step_by(2).map(|k| grid.line(axis, k) + GRID / 2.0).collect()
+}
+
 /// Dovetail tabs on the right and back cut lines of a piece (where a neighbour follows) and
-/// the pockets for the neighbours' tabs on its left and front cut lines, one per two cells,
-/// sitting on the corner pads of the floor. `sides`: a neighbour to the right, back, left, front.
-fn connectors(grid: &Grid, piece: &PlatePiece, fl: f64, p: &Profile, sides: [bool; 4]) -> (Vec<Solid>, Vec<Solid>) {
+/// the pockets for the neighbours' tabs on its left and front cut lines, and on a skeleton floor
+/// the floor around those pockets, which the cross cut-out would otherwise take.
+/// `sides`: a neighbour to the right, back, left, front.
+fn connectors(grid: &Grid, piece: &PlatePiece, fl: f64, skeleton: bool, sides: [bool; 4]) -> [Vec<Solid>; 3] {
     let [right, back, left, front] = sides;
     let [fx, fy] = piece.first;
     let [cx, cy] = piece.cells;
-    let pad_centre = pad(p) / 2.0;
     let (gap, big) = (CONNECTOR_GAP, 1.0);
     // A dovetail reaching from the line at `at` along `axis` into +axis, centred on `along`. A
     // tab stands on the build plate; a pocket (grown by the gap) is open below and keeps a skin
@@ -224,11 +231,19 @@ fn connectors(grid: &Grid, piece: &PlatePiece, fl: f64, p: &Profile, sides: [boo
         };
         dovetail_prism(&pts, fl, grow > 0.0)
     };
-    let mut tabs = Vec::new();
-    let mut pockets = Vec::new();
-    // Along a vertical line (x fixed): tabs centred on the front pad of every other cell row.
-    let ys: Vec<f64> = (fy..fy + cy).step_by(2).map(|k| grid.line(1, k) + pad_centre).collect();
-    let xs: Vec<f64> = (fx..fx + cx).step_by(2).map(|k| grid.line(0, k) + pad_centre).collect();
+    // The floor a pocket needs around it, from the cut into the piece.
+    let patch = |axis: usize, at: f64, along: f64| -> Solid {
+        let (half, reach) = (CONNECTOR_HEAD / 2.0 + gap + CONNECTOR_WALL, CONNECTOR_DEPTH + gap + CONNECTOR_WALL);
+        if axis == 0 {
+            cuboid([reach, 2.0 * half, fl], [at, along - half, 0.0])
+        } else {
+            cuboid([2.0 * half, reach, fl], [along - half, at, 0.0])
+        }
+    };
+    let [mut tabs, mut floor, mut pockets] = [Vec::new(), Vec::new(), Vec::new()];
+    // A vertical cut (x fixed) carries its connectors at heights along y, a horizontal one at x.
+    let ys = connector_spots(grid, 1, fy, cy);
+    let xs = connector_spots(grid, 0, fx, cx);
     if right {
         tabs.extend(ys.iter().map(|&y| tail(0, grid.line(0, fx + cx), y, 0.0)));
     }
@@ -236,12 +251,20 @@ fn connectors(grid: &Grid, piece: &PlatePiece, fl: f64, p: &Profile, sides: [boo
         tabs.extend(xs.iter().map(|&x| tail(1, grid.line(1, fy + cy), x, 0.0)));
     }
     if left {
-        pockets.extend(ys.iter().map(|&y| tail(0, grid.line(0, fx), y, gap)));
+        let at = grid.line(0, fx);
+        pockets.extend(ys.iter().map(|&y| tail(0, at, y, gap)));
+        if skeleton {
+            floor.extend(ys.iter().map(|&y| patch(0, at, y)));
+        }
     }
     if front {
-        pockets.extend(xs.iter().map(|&x| tail(1, grid.line(1, fy), x, gap)));
+        let at = grid.line(1, fy);
+        pockets.extend(xs.iter().map(|&x| tail(1, at, x, gap)));
+        if skeleton {
+            floor.extend(xs.iter().map(|&x| patch(1, at, x)));
+        }
     }
-    (tabs, pockets)
+    [tabs, floor, pockets]
 }
 
 /// A dovetail outline as a tab (from the build plate up to under the pocket's skin, with air)
@@ -268,4 +291,74 @@ pub fn pieces(spec: &PlateSpec, p: &Profile) -> Vec<Part> {
     let pieces = crate::plan::plate_pieces(&grid, grid.margins, &spec.split);
     let floor = if spec.magnets { PlateFloor::Magnets } else { PlateFloor::Open };
     pieces_of(&grid, &claims, &pieces, PlateBuild { floor, ..PlateBuild::default() }, p)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{DrawerProject, DrawerSpec, Kind, PlateOptions};
+
+    /// The ground plan of every connector a split makes, its pocket grown by the gap, as
+    /// [x0, y0, x1, y1] in plate coordinates.
+    fn footprints(grid: &Grid, pieces: &[PlatePiece]) -> Vec<[f64; 4]> {
+        let (back, half, reach) = (1.0, CONNECTOR_HEAD / 2.0 + CONNECTOR_GAP, CONNECTOR_DEPTH + CONNECTOR_GAP);
+        let has = |row: usize, col: usize| pieces.iter().any(|q| q.row == row && q.col == col);
+        let mut out = Vec::new();
+        for q in pieces {
+            let [fx, fy] = q.first;
+            let [cx, cy] = q.cells;
+            if has(q.row, q.col + 1) {
+                let x = grid.line(0, fx + cx);
+                out.extend(connector_spots(grid, 1, fy, cy).iter().map(|&y| [x - back, y - half, x + reach, y + half]));
+            }
+            if has(q.row + 1, q.col) {
+                let y = grid.line(1, fy + cy);
+                out.extend(connector_spots(grid, 0, fx, cx).iter().map(|&x| [x - half, y - back, x + half, y + reach]));
+            }
+        }
+        out
+    }
+
+    fn rect_gap(a: [f64; 4], b: [f64; 4]) -> f64 {
+        let dx = (b[0] - a[2]).max(a[0] - b[2]).max(0.0);
+        let dy = (b[1] - a[3]).max(a[1] - b[3]).max(0.0);
+        dx.hypot(dy)
+    }
+
+    #[test]
+    fn connectors_keep_clear_of_each_other_and_of_the_screws() {
+        let p = Profile::default();
+        // 7 x 5 cells, cut every way: uneven pieces, pieces one cell wide, one row only.
+        let splits: [[Vec<u32>; 2]; 4] = [
+            [vec![3, 2, 2], vec![2, 1, 2]],
+            [vec![1; 7], vec![1; 5]],
+            [vec![4, 3], vec![5]],
+            [vec![2, 3, 2], vec![3, 2]],
+        ];
+        for wall in [false, true] {
+            let kind = if wall { Kind::Wall } else { Kind::Surface };
+            let project = DrawerProject {
+                drawer: DrawerSpec { name: "Bank".into(), width: 294.0, depth: 210.0, height: 100.0 },
+                options: PlateOptions { kind, ..PlateOptions::default() },
+                ..DrawerProject::default()
+            };
+            let grid = crate::plan::plan(&project).unwrap().grid;
+            for split in &splits {
+                let pieces = crate::plan::plate_pieces(&grid, [0.0; 4], split);
+                let feet = footprints(&grid, &pieces);
+                for (i, &a) in feet.iter().enumerate() {
+                    for &b in &feet[i + 1..] {
+                        let gap = rect_gap(a, b);
+                        assert!(gap > 10.0, "{split:?}: connectors {a:?} and {b:?} only {gap:.2} mm apart");
+                    }
+                    for q in &pieces {
+                        for [x, y] in screw_spots(&grid, q, wall, &p) {
+                            let gap = rect_gap(a, [x, y, x, y]) - SCREW_HEAD / 2.0;
+                            assert!(gap > 3.0, "{split:?}: connector {a:?} only {gap:.2} mm from a screw at {x}, {y}");
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

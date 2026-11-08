@@ -97,6 +97,8 @@ pub const CONNECTOR_HEAD: f64 = 11.0;
 pub const CONNECTOR_DEPTH: f64 = 4.0;
 pub const CONNECTOR_GAP: f64 = 0.15;
 pub const CONNECTOR_INSET: f64 = 0.4;
+/// Floor kept around a connector's pocket where a skeleton floor has its cross cut-out.
+pub const CONNECTOR_WALL: f64 = 1.2;
 
 /// Wall plates: the hook standing on every cell's pocket floor, in the plate's frame (x across
 /// the cell from its centre, y up the wall from the cell's lower grid line, z out of the wall
