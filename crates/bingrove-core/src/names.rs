@@ -57,11 +57,12 @@ fn wall_plate(mut name: String, build: PlateBuild) -> String {
 /// it has no keyholes (a plate without hooks).
 pub fn wall_bin(b: &BinSpec, hooks: bool) -> String {
     let [gx, gy] = b.cells;
-    let mut name = format!("wandbin_{gx}x{gy}_{}u", b.units);
+    let kind = if b.hopper { "wandschuette" } else { "wandbin" };
+    let mut name = format!("{kind}_{gx}x{gy}_{}u", b.units);
     if b.dividers != [1, 1] {
         name += &format!("_{}x{}fach", b.dividers[0], b.dividers[1]);
     }
-    if b.open_front {
+    if b.open_front && !b.hopper {
         name += "_offen";
     }
     if let Some(text) = b.label_text.as_deref().map(slug).filter(|s| !s.is_empty()) {

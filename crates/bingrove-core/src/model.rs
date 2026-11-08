@@ -49,6 +49,9 @@ pub struct BinSpec {
     pub scoop_sides: Vec<Side>,
     /// The front wall only half as high, to reach in from the front.
     pub open_front: bool,
+    /// On a wall: a storage bin with a low front and sides that slope up towards the wall, to
+    /// see into and grab from (`open_front` does not apply then).
+    pub hopper: bool,
     /// Round cut-outs in the top of the divider walls, to get a finger under small things.
     pub finger_cutouts: bool,
     /// A slanted window in the front wall.
@@ -111,7 +114,12 @@ impl BinSpec {
 
     /// Whether anything tells the bin's front from its back (such a bin is never turned).
     pub fn has_a_front(&self) -> bool {
-        self.label_tab || self.scoop > 0 || self.open_front || self.window.is_some() || self.label_text.is_some()
+        self.label_tab
+            || self.scoop > 0
+            || self.open_front
+            || self.hopper
+            || self.window.is_some()
+            || self.label_text.is_some()
     }
 }
 
@@ -129,6 +137,7 @@ impl Default for BinSpec {
             scoop: 0,
             scoop_sides: vec![],
             open_front: false,
+            hopper: false,
             finger_cutouts: false,
             window: None,
             cutouts: vec![],

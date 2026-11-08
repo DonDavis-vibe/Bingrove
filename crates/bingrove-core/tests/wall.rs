@@ -155,6 +155,36 @@ fn the_plate_has_a_hook_in_every_cell() {
 }
 
 #[test]
+fn a_hopper_is_low_in_front_and_full_height_at_the_wall() {
+    use bingrove_core::geom::kernel::cuboid;
+    let p = Profile { seg: 32, ..Profile::default() };
+    let mut hopper = tray(0, 0, [2, 1]);
+    hopper.bin.hopper = true;
+    hopper.bin.dividers = [2, 1];
+    hopper.bin.label_text = Some("M4".into());
+    let plan = plan(&wall_project(true, vec![hopper])).unwrap();
+    let entry = &plan.parts[1];
+    assert!(entry.name.starts_with("wandschuette_2x1_6u_2x1fach_M4"), "{}", entry.name);
+    let part = &all_parts(&plan, &p)[1];
+    let mesh = part.mesh().unwrap();
+    assert!(mesh.is_closed(), "{}", entry.name);
+    let [w, d, h] = wall_size([2, 1], 6);
+    let (lo, hi) = mesh.bbox();
+    for (axis, size) in [w, d, h].into_iter().enumerate() {
+        assert!((f64::from(hi[axis] - lo[axis]) - size).abs() < 0.01, "{lo:?} {hi:?}");
+    }
+    // In print frame the front is at y = 0 and the wall at y = d: the front wall stops at 40 %
+    // (plus its bead), the back stands full height.
+    let top_in =
+        |y0: f64, y1: f64| (&part.solid ^ &cuboid([w + 2.0, y1 - y0, h + 2.0], [-1.0, y0, -1.0])).bounding_box().max.z;
+    let front = top_in(0.0, 1.2);
+    assert!(front < 0.45 * h, "the front stands {front:.1} of {h:.1} mm");
+    // The side walls end in the body's corner radius, a millimetre under the top, as in a tray.
+    let back = top_in(d - 12.0, d - 8.0);
+    assert!(back > h - 1.1, "the back stands {back:.2} of {h:.2} mm");
+}
+
+#[test]
 fn trays_are_watertight_and_sized_as_planned() {
     let p = Profile { seg: 32, ..Profile::default() };
     let mut open = tray(0, 0, [2, 1]);

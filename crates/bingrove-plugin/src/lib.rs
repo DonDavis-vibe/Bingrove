@@ -290,7 +290,7 @@ fn drawer_schema(with_lists: bool) -> Value {
             },
             "required": ["kind"]
         }},
-        "placements": {"type": "array", "description": "an exact layout instead of items: bins by cell (x from left, y from front, cell 0 0 front left) with cells [w, d], units, dividers [dx, dy], label_tab + label_side (back|front|left|right), scoop (percent) + scoop_sides, open_front, finger_cutouts (notches in the divider walls), window {width, angle} in the front wall, label_text (engraved on the label shelf, else on the front), lid (a push-on lid is printed too); anything that overlaps is moved, gaps are filled", "items": {
+        "placements": {"type": "array", "description": "an exact layout instead of items: bins by cell (x from left, y from front, cell 0 0 front left) with cells [w, d], units, dividers [dx, dy], label_tab + label_side (back|front|left|right), scoop (percent) + scoop_sides, open_front, hopper (on a wall: a storage bin with a low front and sides sloping up towards the wall), finger_cutouts (notches in the divider walls), window {width, angle} in the front wall, label_text (engraved on the label shelf, else on the front), lid (a push-on lid is printed too); anything that overlaps is moved, gaps are filled", "items": {
             "type": "object",
             "properties": {
                 "x": {"type": "integer"}, "y": {"type": "integer"},

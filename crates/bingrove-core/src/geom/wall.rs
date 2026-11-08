@@ -257,11 +257,27 @@ pub fn tray(b: &BinSpec, hooks: bool, p: &Profile) -> Part {
     }
     // An open front: the front wall only up to a little under half the height.
     let z_open = (h * 0.45).max(WALL + 6.0);
-    if b.open_front {
+    // A hopper: the front low, the sides (and dividers) cut on a slope up towards the wall, a
+    // round bead along the inside of the front's top edge.
+    let z_front = (h * HOPPER_FRONT).max(WALL + 8.0);
+    if b.hopper {
+        let y_full = back * HOPPER_SLOPE;
+        let rise = (h - z_front) / y_full;
+        let slope = [[-1.0, z_front - rise], [y_full, h], [y_full, h + 1.0], [-1.0, h + 1.0]];
+        solid -= translate(&across(&slope, w / 2.0 + 1.0), [w / 2.0, 0.0, 0.0]);
+        let bead = cylinder(w - 2.0 * BIN_R, WALL, WALL, seg).rotate(0.0, 90.0, 0.0);
+        solid += translate(&bead, [BIN_R, WALL, z_front]);
+    } else if b.open_front {
         solid -= cuboid([w - 2.0 * BIN_R, WALL + 1.02, h], [BIN_R, -1.0, z_open]);
     }
     if let Some(text) = b.label_text.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-        let wall_top = if b.open_front { z_open } else { h };
+        let wall_top = if b.hopper {
+            z_front
+        } else if b.open_front {
+            z_open
+        } else {
+            h
+        };
         let height = super::text::fit_height(text, (wall_top - WALL - 3.0).min(6.0), w - 2.0 * WALL - 4.0);
         if height >= 2.0 {
             solid =

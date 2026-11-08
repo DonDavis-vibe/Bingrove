@@ -133,6 +133,11 @@ pub const DETENT_FLAT: f64 = 0.2;
 /// Room beside the blade in a wall part's foot for it to bend away.
 pub const DETENT_ROOM: f64 = 1.0;
 
+/// A wall hopper's front, as a share of its height; its sides slope up from there to full
+/// height at `HOPPER_SLOPE` of the way back to the wall.
+pub const HOPPER_FRONT: f64 = 0.4;
+pub const HOPPER_SLOPE: f64 = 0.6;
+
 /// Outer size of a bin covering `cells` grid cells along one axis.
 pub fn bin_outer(cells: u32) -> f64 {
     cells as f64 * GRID - (GRID - BIN_SIZE)

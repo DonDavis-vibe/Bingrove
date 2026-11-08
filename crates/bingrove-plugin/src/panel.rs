@@ -1283,6 +1283,7 @@ impl DrawerPanel {
             }
             ("lid", _, Some(on), _) => self.edit_selected(|p| p.lid = on),
             ("open_front", _, Some(on), _) => self.edit_selected(|p| p.bin.open_front = on),
+            ("hopper", _, Some(on), _) => self.edit_selected(|p| p.bin.hopper = on),
             ("fingers", _, Some(on), _) => self.edit_selected(|p| p.bin.finger_cutouts = on),
             ("window", _, Some(on), _) => {
                 self.edit_selected(|p| p.bin.window = on.then(bingrove_core::model::Window::default))
@@ -1590,7 +1591,14 @@ impl DrawerPanel {
             ));
             rows.push(row(
                 tr("Ausstattung", "Features"),
-                check("sel_open_front", tr("vorne offen", "open front"), first.bin.open_front),
+                Node::row(vec![
+                    check(
+                        "sel_hopper",
+                        tr("Schütte (vorne niedrig, schräg)", "Hopper (low, slanted front)"),
+                        first.bin.hopper,
+                    ),
+                    check("sel_open_front", tr("vorne offen", "open front"), first.bin.open_front),
+                ]),
             ));
             rows.push(row(
                 tr("Gravur", "Engraving"),
