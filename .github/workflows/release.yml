@@ -18,9 +18,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip2
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: crates/bingrove-plugin
+      # No cache: one saved by a tag's run can be read by that tag alone, and the build is short.
       - name: Build the plugin
         run: scripts/build.sh
       - name: Checksum

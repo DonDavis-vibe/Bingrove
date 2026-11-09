@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   check:
     name: Format, clippy, tests, plugin
@@ -15,11 +18,13 @@ jobs:
         with:
           targets: wasm32-wasip2
           components: rustfmt, clippy
+      # Only main saves a cache: one made by a pull request serves that pull request alone.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             .
             crates/bingrove-plugin
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Everything check.sh checks
         run: scripts/check.sh
       - name: Keep the plugin
@@ -27,3 +32,25 @@ jobs:
         with:
           name: bingrove.wasm
           path: target/plugin/bingrove.wasm
+          retention-days: 7
+
+  # A changed Cargo.lock or a new Rust makes a new cache and leaves the old one lying until
+  # GitHub drops it a week later. After a run on main, only the newest is kept.
+  tidy:
+    name: Drop old caches
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Keep the newest cache, delete the rest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh cache list --limit 100 --sort created_at --order desc --json id,key,sizeInBytes \
+            --jq '.[1:][] | "\(.id) \(.key)"' | while read -r id key; do
+              echo "deleting $key"
+              gh cache delete "$id"
+            done
