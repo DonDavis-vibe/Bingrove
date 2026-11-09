@@ -48,6 +48,8 @@ bleiben frei, wo nichts hinkommt. Die Platte bekommt einen festen Boden (skelett
 M4-Schraublöcher, Schwalbenschwanz-Verbinder zwischen den Teilen und für Blechflächen
 Magnettaschen von unten.
 
+![Vorschau eines Regalbodens: links ein 8 × 11-Raster auf einem Boden, der 16 mm zu schmal und 12 mm zu kurz ist, rot umrandet; rechts dasselbe Raster auf einem passenden Boden, blau umrandet](assets/preview-space.png)
+
 ### Wand: Teile, die einhängen
 
 Eine Platte an der Wand mit zwei Haken (unten und oben) und einem Federblatt in jeder Zelle.
@@ -84,6 +86,8 @@ ob deine Dateien wirklich in der Bibliothek angekommen sind.
 Selbst bauen: siehe [Entwicklung](#entwicklung).
 
 ## Das Panel
+
+![Bingroves Panel in Meshgrove: Einstellungen der Schublade, das Raster der Bins, die 3D-Vorschau im blauen Umriss der Schublade und die Teileliste](assets/screenshot-panel.de.png)
 
 Das Panel hat drei Teile:
 
