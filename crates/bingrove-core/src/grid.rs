@@ -61,6 +61,12 @@ impl Grid {
                 return Err(PlanError::TooSmall(drawer[0], drawer[1]));
             }
             let plate = cells.map(|c| c as f64 * GRID);
+            // More cells than the size holds are taken as asked, and said.
+            let wall = o.kind == Kind::Wall;
+            let warnings = (0..2)
+                .filter(|&axis| drawer[axis] > 0.0 && plate[axis] > drawer[axis] + 1e-6)
+                .map(|axis| Warning::GridLargerThanSpace { axis, grid: plate[axis], space: drawer[axis], wall })
+                .collect();
             let grid = Grid {
                 cells,
                 plate,
@@ -71,7 +77,7 @@ impl Grid {
                 rim: o.rim,
                 floor,
             };
-            return Ok((grid, Vec::new()));
+            return Ok((grid, warnings));
         }
         let plate = drawer.map(|d| d - o.clearance);
         let fit = plate.map(|p| (p / GRID + 1e-9).floor().max(0.0) as u32);

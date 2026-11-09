@@ -41,8 +41,10 @@ immer Platte, damit der Einsatz nicht rutscht.
 
 ### Fläche: Werkbank oder Tisch
 
-Die Platte ist das Raster selbst, Zellen × 42 mm, ohne Rand. Zellen bleiben frei, wo nichts
-hinkommt. Die Platte bekommt einen festen Boden (skelettiert oder voll), gesenkte
+Die Platte ist das Raster selbst, Zellen × 42 mm, ohne Rand. Du gibst die Fläche in mm an und
+bekommst so viele Zellen, wie hineinpassen, oder du stellst die Zellen selbst ein. Sind es mehr,
+als die Fläche fasst, warnt der Plan, und die Vorschau zeigt, wo die Platte übersteht. Zellen
+bleiben frei, wo nichts hinkommt. Die Platte bekommt einen festen Boden (skelettiert oder voll), gesenkte
 M4-Schraublöcher, Schwalbenschwanz-Verbinder zwischen den Teilen und für Blechflächen
 Magnettaschen von unten.
 
@@ -95,8 +97,10 @@ Das Panel hat drei Teile:
   auf freien Zellen ziehst du neue Bins auf, Rechtsklick öffnet ein Menü. Ein Klick auf einen Bin
   öffnet darunter seine Einstellungen: Höhe, Fächer, Label-Lasche, Griffmulde, Gravur, Halterart
   und die eigenen Maße des Halters.
-- **Rechts** die 3D-Vorschau und die Teileliste. Ein Klick auf ein Teil zeigt es auf dem
-  Druckbett, darunter seinen vollen Namen und die genauen Maße.
+- **Rechts** die 3D-Vorschau und die Teileliste. Um den Zusammenbau steht blau der Raum, für den
+  du planst: die Schublade innen, die Fläche mit dem Platz darüber, die Wand mit dem Platz davor.
+  Wo Platte oder Bins herausragen, wird er rot (ab Meshgrove 0.8.4). Ein Klick auf ein Teil zeigt
+  es auf dem Druckbett, darunter seinen vollen Namen und die genauen Maße.
 
 **Generieren + Druckliste** schreibt alles nach `Gridfinity/<Name>` in die Bibliothek und legt
 zwei Drucklisten an: `<Name> – Teile` (jede STL mit Stückzahl) und `<Name> – Druckbetten` (eine

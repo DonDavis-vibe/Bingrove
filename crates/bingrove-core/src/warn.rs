@@ -28,6 +28,21 @@ pub enum Warning {
     /// A holder for drawers hangs on a wall: its pockets open to the front and the plate's
     /// hooks keep its feet out.
     HolderNotForWall { holder: String },
+    /// A surface or a wall was given more cells than its size holds: the plate sticks out
+    /// along `axis` (0 across, 1 deep or up the wall).
+    GridLargerThanSpace { axis: usize, grid: f64, space: f64, wall: bool },
+}
+
+/// What a surface's or a wall's size along an axis is called.
+fn extent(axis: usize, wall: bool, german: bool) -> &'static str {
+    match (axis, wall, german) {
+        (0, _, true) => "breit",
+        (0, _, false) => "wide",
+        (_, true, true) => "hoch",
+        (_, true, false) => "high",
+        (_, false, true) => "tief",
+        (_, false, false) => "deep",
+    }
 }
 
 impl Warning {
@@ -58,6 +73,12 @@ impl Warning {
             }
             Warning::HolderNotForWall { holder } => format!(
                 "{holder} ist für Schubladen gemacht: an der Wand öffnen sich die Taschen nach vorn, und die Haken der Platte lassen seine Füße nicht hinein"
+            ),
+            Warning::GridLargerThanSpace { axis, grid, space, wall } => format!(
+                "Das Raster ist {grid:.0} mm {0}, die {1} nur {space:.0} mm: die Platte steht {2:.0} mm über",
+                extent(*axis, *wall, true),
+                if *wall { "Wand" } else { "Fläche" },
+                grid - space
             ),
         }
     }
@@ -96,6 +117,13 @@ impl std::fmt::Display for Warning {
             Warning::HolderNotForWall { holder } => write!(
                 f,
                 "{holder} is made for drawers: on a wall its pockets open to the front and the plate's hooks keep its feet out"
+            ),
+            Warning::GridLargerThanSpace { axis, grid, space, wall } => write!(
+                f,
+                "the grid is {grid:.0} mm {0}, the {1} only {space:.0} mm: the plate sticks out by {2:.0} mm",
+                extent(*axis, *wall, false),
+                if *wall { "wall" } else { "surface" },
+                grid - space
             ),
         }
     }

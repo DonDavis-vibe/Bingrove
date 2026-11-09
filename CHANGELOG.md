@@ -22,6 +22,15 @@ the lift and the magnets moved. Print plate and parts with the same version.
   the part has settled. Lift firmly to take a part off. *Output* takes the latch strength and the hook play on walls; 0 leaves the latch out.
 - Calibration: the wall cell gets the blade, and three blocks with a softer or firmer latch
   (0.3, 0.5, 0.7) join the three hook blocks.
+- The 3D preview shows the space you plan for, in blue round the assembly: the inside of the
+  drawer, the surface with the room above it, or the wall with the room in front of it. Sides
+  the plate or the bins stick out of turn red. Needs Meshgrove 0.8.4; older versions show the
+  preview as before.
+- Surfaces and walls take their real size in mm next to the cells. A new size takes as many
+  cells as it holds; cells set by hand stay, and if they are more than the size holds the plan
+  warns (`grid_larger_than_space`) and the preview shows where the plate sticks out. Before,
+  the size silently followed the cells, so a grid planned too large for its shelf only showed
+  after printing.
 - Wall **hoppers** (`hopper`): a wall bin with a low front and sides that slope up to the wall.
 - Wall **hooks and brackets** (`wall_hooks`): arms out of the part's bottom with their tips up,
   one, two, a fork for a hammer's handle, or one wide bracket for cables and hoses.

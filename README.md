@@ -41,7 +41,9 @@ so the insert does not slide.
 
 ### Surface: a workbench or desk
 
-The plate is the grid itself, cells × 42 mm, with no margins. Cells stay free wherever nothing
+The plate is the grid itself, cells × 42 mm, with no margins. Give the surface in mm and get as
+many cells as it holds, or set the cells yourself. If they are more than the surface holds, the
+plan warns and the preview shows where the plate sticks out. Cells stay free wherever nothing
 is put. The plate gets a solid floor (skeleton or full), countersunk M4 screw holes, dovetail
 connectors between its pieces and, for steel tops, magnet pockets underneath.
 
@@ -91,8 +93,10 @@ The panel has three parts:
 - **Middle**, the plan as a grid editor. Drag to move, pull an edge to resize, draw new bins on
   free cells, right-click for a menu. A click on a bin opens its settings below the grid: height,
   compartments, label shelf, scoop, engraving, holder kind and the holder's own sizes.
-- **Right**, the 3D preview and the parts list. A click on a part shows it on the print bed, with
-  its full name and exact size underneath.
+- **Right**, the 3D preview and the parts list. Round the assembly stands, in blue, the space you
+  plan for: the inside of the drawer, the surface with the room above it, the wall with the room
+  in front of it. Where the plate or bins stick out it turns red (from Meshgrove 0.8.4 on). A
+  click on a part shows it on the print bed, with its full name and exact size underneath.
 
 **Generate + print list** writes everything to `Gridfinity/<name>` in the library and makes two
 print lists: `<name> – Teile` (each STL with its quantity) and `<name> – Druckbetten` (a 3MF per

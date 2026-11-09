@@ -455,6 +455,27 @@ pub fn plate_pieces(grid: &Grid, reach: [f64; 4], split: &[Vec<u32>; 2]) -> Vec<
     out
 }
 
+/// The space a project is planned for, as its minimum and maximum corner in the coordinates of
+/// the assembly ([`crate::geom::assemble`]), to show round it: a drawer's inside, a surface with
+/// the room above it, or a wall with the room in front of it. The plate lies in a drawer with
+/// its clearance all round, and in the middle of a surface or a wall. Flat (no extent along
+/// one axis) when the height is not known; `None` without a width and a depth.
+pub fn space(project: &DrawerProject, plan: &Plan) -> Option<[[f64; 3]; 2]> {
+    let d = &project.drawer;
+    if d.width <= 0.0 || d.depth <= 0.0 {
+        return None;
+    }
+    let height = d.height.max(0.0);
+    let plate = plan.grid.plate;
+    // Where the space starts along x and y, seen from the plate's corner.
+    let lo = [(plate[0] - d.width) / 2.0, (plate[1] - d.depth) / 2.0];
+    Some(match plan.kind {
+        Kind::Drawer | Kind::Surface => [[lo[0], lo[1], 0.0], [lo[0] + d.width, lo[1] + d.depth, height]],
+        // Stood up: the wall's face is y = 0, parts reach out towards −y, the wall's height is z.
+        Kind::Wall => [[lo[0], -height, lo[1]], [lo[0] + d.width, 0.0, lo[1] + d.depth]],
+    })
+}
+
 impl Plan {
     /// Where a placed part's minimum corner goes, in plate coordinates, with the bins standing
     /// on the plate floor.

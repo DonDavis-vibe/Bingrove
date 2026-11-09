@@ -705,19 +705,23 @@ impl DrawerPanel {
                 enabled: true,
             };
             rows.push(row(
+                tr("Wand breit × hoch", "Wall wide × high"),
+                Node::row(vec![Node::mm("width", d.width, 42.0, 1500.0), Node::mm("depth", d.depth, 42.0, 1500.0)]),
+            ));
+            rows.push(row(
                 tr("Zellen quer × hoch", "Cells across × up"),
                 Node::row(vec![int("cells_x", cells[0]), int("cells_y", cells[1])]),
             ));
             rows.push(row(
-                tr("Wand", "Wall"),
+                tr("Platte", "Plate"),
                 Node::Label {
                     text: tf!(
                         "{:.0} × {:.0} mm; Teile werden bis zum Anschlag ({:.0} mm) angehoben eingesetzt, \
                          rutschen auf die Haken und rasten ein",
                         "{:.0} × {:.0} mm; parts go in pushed up to their stop ({:.0} mm), slide down onto \
                          the hooks and click in",
-                        d.width,
-                        d.depth,
+                        f64::from(cells[0]) * GRID,
+                        f64::from(cells[1]) * GRID,
                         bingrove_core::spec::HOOK_LIFT
                     ),
                     style: TextStyle::Small,
@@ -737,6 +741,10 @@ impl DrawerPanel {
                 enabled: true,
             };
             rows.push(row(
+                tr("Fläche breit × tief", "Surface wide × deep"),
+                Node::row(vec![Node::mm("width", d.width, 42.0, 1500.0), Node::mm("depth", d.depth, 42.0, 1500.0)]),
+            ));
+            rows.push(row(
                 tr("Zellen quer × längs", "Cells across × deep"),
                 Node::row(vec![int("cells_x", cells[0]), int("cells_y", cells[1])]),
             ));
@@ -746,13 +754,16 @@ impl DrawerPanel {
                     text: tf!(
                         "{:.0} × {:.0} mm, Zellen bleiben frei, wo nichts steht",
                         "{:.0} × {:.0} mm, cells stay free where nothing stands",
-                        d.width,
-                        d.depth
+                        f64::from(cells[0]) * GRID,
+                        f64::from(cells[1]) * GRID
                     ),
                     style: TextStyle::Small,
                 },
             ));
-            rows.push(row(tr("Höhe der Bins", "Bin height"), Node::mm("height", d.height, 0.0, 1000.0)));
+            rows.push(row(
+                tr("Höhe (Platz nach oben)", "Height (room above)"),
+                Node::mm("height", d.height, 0.0, 1000.0),
+            ));
         } else {
             rows.push(row(tr("Breite", "Width"), Node::mm("width", d.width, 42.0, 1500.0)));
             rows.push(row(tr("Tiefe", "Depth"), Node::mm("depth", d.depth, 42.0, 1500.0)));
@@ -2747,12 +2758,18 @@ impl GuestPanel for DrawerPanel {
                     }),
                 }
                 let key = s.selected_part.map_or("drawer".to_string(), |i| format!("part:{i}"));
+                // Round the whole plan the space it is meant for; a single part lies on the bed.
+                let frame = match s.selected_part {
+                    Some(_) => None,
+                    None => bingrove_core::plan::space(&s.project, p).map(|c| c.map(|v| v.map(|x| x as f32))),
+                };
                 right.push(Node::MeshView {
                     id: "preview".into(),
                     key,
                     revision: s.revision,
                     height: Some(320.0),
                     bed: s.selected_part.map(|_| [s.project.bed.x as f32, s.project.bed.y as f32]),
+                    frame,
                 });
                 if s.preview_job.is_some() {
                     let (fraction, what) = s.preview_progress.clone().unwrap_or_default();
@@ -2838,18 +2855,23 @@ impl GuestPanel for DrawerPanel {
             }
             Event::Click { id } if id.starts_with("mix:") => self.mix_clicked(&id[4..]),
             Event::Changed { id, value } if id == "cells_x" || id == "cells_y" => {
-                // A surface is sized in cells; the mm follow.
+                // A surface's or a wall's cells. Its size in mm follows them as long as it was
+                // just the plate's size; a size the user gave stays, so the preview and a
+                // warning show where the grid no longer fits it.
                 let mut s = self.state.borrow_mut();
                 let d = &s.project.drawer;
-                let mut cells = s
-                    .project
-                    .options
-                    .cells
-                    .unwrap_or([(d.width / GRID).floor().max(1.0) as u32, (d.depth / GRID).floor().max(1.0) as u32]);
+                let size = [d.width, d.depth];
+                let old = s.project.options.cells.unwrap_or(size.map(|v| (v / GRID).floor().max(1.0) as u32));
+                let mut cells = old;
                 cells[usize::from(id == "cells_y")] = (value.as_f64().unwrap_or(1.0).round().max(1.0) as u32).min(35);
                 s.project.options.cells = Some(cells);
-                s.project.drawer.width = f64::from(cells[0]) * GRID;
-                s.project.drawer.depth = f64::from(cells[1]) * GRID;
+                let follows = |axis: usize| (size[axis] - f64::from(old[axis]) * GRID).abs() < 0.05;
+                if follows(0) {
+                    s.project.drawer.width = f64::from(cells[0]) * GRID;
+                }
+                if follows(1) {
+                    s.project.drawer.depth = f64::from(cells[1]) * GRID;
+                }
                 drop(s);
                 self.changed();
                 Vec::new()
@@ -2879,8 +2901,19 @@ impl GuestPanel for DrawerPanel {
                     let mut s = self.state.borrow_mut();
                     let o = &mut s.project.options;
                     match (id.as_str(), num) {
-                        ("width", Some(v)) => s.project.drawer.width = v,
-                        ("depth", Some(v)) => s.project.drawer.depth = v,
+                        ("width", Some(v)) => {
+                            s.project.drawer.width = v;
+                            // A surface or a wall given a new size takes as many cells as it holds.
+                            if s.project.options.kind != Kind::Drawer {
+                                s.project.options.cells = None;
+                            }
+                        }
+                        ("depth", Some(v)) => {
+                            s.project.drawer.depth = v;
+                            if s.project.options.kind != Kind::Drawer {
+                                s.project.options.cells = None;
+                            }
+                        }
                         ("height", Some(v)) => s.project.drawer.height = v,
                         ("edge_threshold", Some(v)) => o.edge_threshold = v,
                         ("bins", Some(v)) => s.bins_wanted = v.max(0.0) as u32,
