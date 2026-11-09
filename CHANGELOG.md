@@ -3,7 +3,7 @@
 Bingrove is a Meshgrove plugin: a release is one `bingrove.wasm`, installed under *Settings →
 Plugins*. It needs a Meshgrove with the plugin system (0.8.0 or newer).
 
-## 0.5.0 (unreleased)
+## 0.5.0 – 2026-11-09
 
 Walls, reworked. **Wall plates and wall parts from 0.4 do not fit those from 0.5**: the hook,
 the lift and the magnets moved. Print plate and parts with the same version.
