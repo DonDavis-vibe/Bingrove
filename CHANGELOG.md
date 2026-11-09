@@ -24,7 +24,7 @@ the lift and the magnets moved. Print plate and parts with the same version.
   (0.3, 0.5, 0.7) join the three hook blocks.
 - The 3D preview shows the space you plan for, in blue round the assembly: the inside of the
   drawer, the surface with the room above it, or the wall with the room in front of it. Sides
-  the plate or the bins stick out of turn red. Needs Meshgrove 0.8.4; older versions show the
+  the plate or the bins stick out of turn red. Needs Meshgrove 0.9.0; older versions show the
   preview as before.
 - Surfaces and walls take their real size in mm next to the cells. A new size takes as many
   cells as it holds; cells set by hand stay, and if they are more than the size holds the plan

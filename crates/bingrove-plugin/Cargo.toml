@@ -11,13 +11,13 @@ crate-type = ["cdylib"]
 
 [dependencies]
 bingrove-core = { path = "../bingrove-core" }
-# The plugin interface of Meshgrove, MIT OR Apache-2.0, pinned to the Meshgrove release the plugin
+# The plugin interface of Meshgrove, MIT OR Apache-2.0, pinned to the Meshgrove tag the plugin
 # was built against (the API's major.minor is what counts at run time). For work on both at once,
 # point it at a checkout instead: put
 #   [patch."https://github.com/DonDavis-vibe/MeshGrove"]
 #   meshgrove-plugin-api = { path = "../stl_browser/crates/meshgrove-plugin-api" }
 # into .cargo/config.toml (not committed).
-meshgrove-plugin-api = { git = "https://github.com/DonDavis-vibe/MeshGrove", tag = "v0.8.4", features = ["guest"] }
+meshgrove-plugin-api = { git = "https://github.com/DonDavis-vibe/MeshGrove", tag = "plugin-api-frame", features = ["guest"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

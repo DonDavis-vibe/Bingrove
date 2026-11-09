@@ -99,7 +99,7 @@ Das Panel hat drei Teile:
   und die eigenen Maße des Halters.
 - **Rechts** die 3D-Vorschau und die Teileliste. Um den Zusammenbau steht blau der Raum, für den
   du planst: die Schublade innen, die Fläche mit dem Platz darüber, die Wand mit dem Platz davor.
-  Wo Platte oder Bins herausragen, wird er rot (ab Meshgrove 0.8.4). Ein Klick auf ein Teil zeigt
+  Wo Platte oder Bins herausragen, wird er rot (ab Meshgrove 0.9.0). Ein Klick auf ein Teil zeigt
   es auf dem Druckbett, darunter seinen vollen Namen und die genauen Maße.
 
 **Generieren + Druckliste** schreibt alles nach `Gridfinity/<Name>` in die Bibliothek und legt
@@ -221,7 +221,7 @@ scripts/install-into-meshgrove.sh
 schreibt `target/plugin/bingrove.wasm`, `install-into-meshgrove.sh` kopiert es in Meshgroves
 Plugin-Ordner.
 
-Das Plugin bezieht `meshgrove-plugin-api` aus dem Meshgrove-Repository, auf einen Release-Tag
+Das Plugin bezieht `meshgrove-plugin-api` aus dem Meshgrove-Repository, auf einen Tag
 gepinnt. Für die Arbeit an beidem zeigt der Kommentar in `crates/bingrove-plugin/Cargo.toml`, wie
 man es auf einen lokalen Checkout umbiegt. Die CI fährt `check.sh` bei jedem Push; ein Tag `v*`
 baut das Plugin und veröffentlicht es mit Prüfsumme und Changelog-Eintrag als GitHub-Release.

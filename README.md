@@ -95,7 +95,7 @@ The panel has three parts:
   compartments, label shelf, scoop, engraving, holder kind and the holder's own sizes.
 - **Right**, the 3D preview and the parts list. Round the assembly stands, in blue, the space you
   plan for: the inside of the drawer, the surface with the room above it, the wall with the room
-  in front of it. Where the plate or bins stick out it turns red (from Meshgrove 0.8.4 on). A
+  in front of it. Where the plate or bins stick out it turns red (from Meshgrove 0.9.0 on). A
   click on a part shows it on the print bed, with its full name and exact size underneath.
 
 **Generate + print list** writes everything to `Gridfinity/<name>` in the library and makes two
@@ -213,7 +213,7 @@ scripts/install-into-meshgrove.sh
 `target/plugin/bingrove.wasm`, and `install-into-meshgrove.sh` copies it into Meshgrove's plugin
 folder.
 
-The plugin takes `meshgrove-plugin-api` from the Meshgrove repository, pinned to a release tag.
+The plugin takes `meshgrove-plugin-api` from the Meshgrove repository, pinned to a tag.
 To work on both at once, the comment in `crates/bingrove-plugin/Cargo.toml` shows how to point it
 at a local checkout. CI runs `check.sh` on every push; a tag `v*` builds the plugin and publishes
 it with its checksum and the changelog entry as a GitHub release. Changes per version:
