@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Everything CI would check: format, clippy and tests of the native workspace, clippy of the
-# plugin for wasm32-wasip2, and that the plugin builds.
+# plugin for wasm32-wasip2, the plugin's native tests, and that the plugin builds.
 #
 # For the wasm target the whole stable toolchain of rustup has to come first in PATH: with a
 # distribution's rustc first (Fedora), clippy-driver takes its sysroot and finds no std for wasm.
@@ -18,4 +18,6 @@ fi
 cargo fmt --manifest-path crates/bingrove-plugin/Cargo.toml --check
 cargo clippy --manifest-path crates/bingrove-plugin/Cargo.toml --target wasm32-wasip2 \
     --target-dir target/plugin -- -D warnings
+# The plugin's own tests run natively: its tools must stay within what Meshgrove accepts.
+cargo test --manifest-path crates/bingrove-plugin/Cargo.toml --lib --target-dir target/plugin-native
 scripts/build.sh

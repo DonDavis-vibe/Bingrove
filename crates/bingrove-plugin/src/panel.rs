@@ -1341,6 +1341,7 @@ impl DrawerPanel {
             ("label", _, _, Some(t)) => self.edit_selected(|p| p.label = (!t.is_empty()).then(|| t.clone())),
             ("holder", _, _, Some(id)) => self.edit_selected(|p| set_holder(p, &id)),
             ("engrave", _, _, Some(t)) => self.edit_selected(|p| p.bin.label_text = (!t.is_empty()).then(|| t.clone())),
+            ("lid_label", _, _, Some(t)) => self.edit_selected(|p| p.lid_label = (!t.is_empty()).then(|| t.clone())),
             ("hole_label" | "slot_label", _, _, Some(t)) => self.edit_selected(|p| {
                 let text = (!t.is_empty()).then(|| t.clone());
                 match &mut p.holder {
@@ -1751,6 +1752,24 @@ impl DrawerPanel {
                 ));
             }
             rows.push(row(tr("Ausstattung", "Features"), Node::row(extras)));
+            if first.lid {
+                rows.push(row(
+                    tr("Deckel-Beschriftung", "Lid text"),
+                    Node::TextInput {
+                        id: "sel_lid_label".into(),
+                        value: first.lid_label.clone().unwrap_or_default(),
+                        hint: Some(
+                            tr(
+                                "leer: wie die Gravur; als zweiter Körper für eine zweite Farbe",
+                                "empty: same as the engraving; a second body for a second colour",
+                            )
+                            .into(),
+                        ),
+                        multiline: false,
+                        enabled: true,
+                    },
+                ));
+            }
             if let Some(w) = &first.bin.window {
                 rows.push(row(
                     tr("Fenster", "Window"),

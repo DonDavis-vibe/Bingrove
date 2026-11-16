@@ -123,6 +123,13 @@ bestimmte Dinge lassen sich Taschen ausschneiden: Box, Zylinder, Polygon oder di
 Modells aus deiner Bibliothek. Text wird in einer Strichschrift (Hershey Simplex) in die
 Label-Lasche oder die Front graviert.
 
+Auch ein Deckel kann beschriftet werden (*Deckel-Beschriftung*; leer gilt die Gravur des Bins).
+Die Schrift ist 0,6 mm tief eingraviert, dazu kommt ein zweiter Körper, der sie bündig füllt,
+`…_schrift.stl`. Auf den Druckbetten sind Deckel und Schrift schon ein Objekt aus zwei Teilen,
+die Schrift auf Filament 2 (Orca, Bambu Studio, Anycubic Slicer Next): Mit einem
+Mehrfarbdrucker ist nichts weiter zu tun. Mit einer Farbe druckst du nur den Deckel, die Schrift
+ist dann vertieft zu sehen. Auf einem beschrifteten Deckel stapeln sich Bins wie gewohnt.
+
 **Halter** ersetzen einen Bin auf seinen Zellen. Jeder hat Sätze zum Laden, und seine Maße
 bleiben änderbar:
 

@@ -47,5 +47,19 @@ pub fn lid(l: &LidSpec, p: &Profile) -> Part {
             parts.push(bump(w - bx, d * k, false));
         }
     }
-    Part::new(crate::names::lid(l), union(parts))
+    let body = union(parts);
+    match l.label.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        // The text on the plate inside the lip, read from the front, as large as fits.
+        Some(text) => {
+            let room = [w - 2.0 * (2.6 + 3.0), d - 2.0 * (2.6 + 3.0)];
+            // As large as fits, never past the room: a long text gets small rather than run
+            // into the lip.
+            let height = super::text::fit_height(text, 12.0f64.min(room[1]), room[0]);
+            let (body, fill) = super::text::inlay(body, text, [w / 2.0, d / 2.0, plate_top], height, LID_TEXT_DEPTH);
+            let mut part = Part::new(crate::names::lid(l), body);
+            part.inlay = Some(fill).filter(|f| !f.is_empty());
+            part
+        }
+        None => Part::new(crate::names::lid(l), body),
+    }
 }

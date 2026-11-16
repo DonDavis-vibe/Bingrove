@@ -43,6 +43,8 @@ impl Default for ExportOptions {
 #[serde(rename_all = "snake_case")]
 pub enum FileKind {
     Part,
+    /// The body that fills a part's engraving: printed with that part, in a second colour.
+    Inlay,
     Bed,
     Assembly,
     Project,
@@ -114,20 +116,32 @@ pub fn export(
     progress(0, total, "plate");
     let parts = all_parts(plan, &project.profile);
     let mut meshes = Vec::with_capacity(parts.len());
+    let mut inlays = Vec::with_capacity(parts.len());
     for (i, part) in parts.iter().enumerate() {
         meshes.push(part.mesh()?);
+        inlays.push(part.inlay_mesh()?);
         progress(i + 1, total, &part.name);
     }
     let mut files = Vec::new();
     if opts.stl {
-        for (entry, mesh) in plan.parts.iter().zip(&meshes) {
+        for ((entry, mesh), inlay) in plan.parts.iter().zip(&meshes).zip(&inlays) {
             save_stl(out, &entry.name, mesh)?;
             files.push(ExportedFile { path: entry.name.clone(), kind: FileKind::Part, quantity: entry.quantity });
+            if let Some(inlay) = inlay {
+                let name = crate::names::inlay(&entry.name);
+                save_stl(out, &name, inlay)?;
+                files.push(ExportedFile { path: name, kind: FileKind::Inlay, quantity: 0 });
+            }
         }
     }
     let slug = slug(&plan.name);
-    let objects: Vec<threemf::Object> =
-        plan.parts.iter().zip(&meshes).map(|(e, m)| threemf::Object { name: &e.name, mesh: m }).collect();
+    let objects: Vec<threemf::Object> = plan
+        .parts
+        .iter()
+        .zip(&meshes)
+        .zip(&inlays)
+        .map(|((e, m), inlay)| threemf::Object { name: &e.name, mesh: m, inlay: inlay.as_ref() })
+        .collect();
     let mut beds = 0;
     if opts.beds {
         let dir = out.join("Druckbetten");
@@ -166,7 +180,7 @@ pub fn export(
     if opts.assembly && plan.kind == crate::model::Kind::Wall {
         // A wall stands up, which turns about x; the assembly goes in as one mesh.
         let mesh = crate::geom::assemble(plan, &parts, &meshes);
-        let whole = [threemf::Object { name: &plan.name, mesh: &mesh }];
+        let whole = [threemf::Object { name: &plan.name, mesh: &mesh, inlay: None }];
         let item = threemf::Item { object: 0, quarter_turns: 0, at: [0.0; 3] };
         let name = format!("{slug}_zusammenbau.3mf");
         std::fs::write(out.join(&name), threemf::write(&format!("{} – Zusammenbau", plan.name), &whole, &[item])?)?;

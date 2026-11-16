@@ -10,6 +10,12 @@ Plugins*. It needs a Meshgrove with the plugin system: 0.9.0 or newer from Bingr
 Bingrove 0.5 keeps running on 0.8.
 
 - Built against Meshgrove 0.9.0's plugin interface.
+- Text on lids (`lid_label`, *Lid text* in the panel; empty takes the bin's engraving): engraved
+  0.6 mm into the top and filled flush by a second body, `…_schrift.stl`, for a second colour.
+  On the print beds a labelled lid is one object of two parts, "Körper" and "Schrift", with the
+  text on filament 2 for Orca, Bambu Studio and Anycubic Slicer Next
+  (`Metadata/model_settings.config`). Bins still stack on it: nothing stands above the plate.
+- A print bed's 3MF holds only the parts that lie on it, not every part of the drawer.
 
 ## 0.5.0 – 2026-11-09
 

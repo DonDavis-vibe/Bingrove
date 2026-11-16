@@ -117,6 +117,12 @@ stacking lip on top, so another bin stands on it. Pockets can be cut for particu
 box, a cylinder, a polygon, or the outline of a model from your library. Text is engraved in a
 stroke font (Hershey Simplex) on the label shelf or the front.
 
+A lid can carry text too (*Lid text*; empty takes the bin's engraving). It is engraved 0.6 mm
+into the top and comes with a second body that fills it flush, `…_schrift.stl`. On the print
+beds lid and text are already one object of two parts, the text on filament 2 (Orca, Bambu
+Studio, Anycubic Slicer Next): with a multi-colour printer that is all. With one colour, print
+the lid alone and the text shows engraved. Bins still stack on a labelled lid.
+
 **Holders** replace a bin on its cells. Every one has sets to load and its sizes stay editable:
 
 | Holder | For | You set |

@@ -24,15 +24,23 @@ pub struct Part {
     /// Where the minimum corner belongs in plate coordinates (plate pieces; bins are placed
     /// through [`Plan::position`]).
     pub origin: [f64; 2],
+    /// A second body that fills an engraving of the part, in the same frame, to print the
+    /// text in another colour.
+    pub inlay: Option<Solid>,
 }
 
 impl Part {
     pub fn new(name: String, solid: Solid) -> Self {
-        Part { name, solid, origin: [0.0; 2] }
+        Part { name, solid, origin: [0.0; 2], inlay: None }
     }
 
     pub fn mesh(&self) -> Result<TriMesh, GeomError> {
         kernel::finish(&self.solid, &self.name)
+    }
+
+    /// The mesh of the inlay, if the part has one.
+    pub fn inlay_mesh(&self) -> Result<Option<TriMesh>, GeomError> {
+        self.inlay.as_ref().map(|s| kernel::finish(s, &crate::names::inlay(&self.name))).transpose()
     }
 }
 

@@ -351,7 +351,7 @@ pub fn plan(project: &DrawerProject) -> Result<Plan, PlanError> {
     // Lids are parts of their own, one kind per footprint, printed as often as asked for.
     let lids = o.kind != Kind::Wall;
     for p in out.iter().map(|q| &q.placement).filter(|p| lids && p.lid && p.holder.is_none() && p.bin.lip) {
-        let lid = LidSpec { cells: p.bin.cells, ..LidSpec::default() };
+        let lid = LidSpec { cells: p.bin.cells, label: p.lid_text(), ..LidSpec::default() };
         let part = PartSpec::Lid(lid.clone());
         match parts.iter_mut().find(|b| b.part == part) {
             Some(b) => b.quantity += 1,

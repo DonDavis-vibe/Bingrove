@@ -81,6 +81,8 @@ pub const TAPE_ROLL_GAP: f64 = 1.0;
 pub const LID_PLUG: f64 = 3.5;
 pub const LID_GAP: f64 = 0.2;
 pub const LID_CLICK: f64 = 0.3;
+/// How deep a lid's text goes into its plate; the body filling it is as thick.
+pub const LID_TEXT_DEPTH: f64 = 0.6;
 
 /// Socket pegs: the base plate they stand on above the bin floor, and their height.
 pub const PEG_BASE: f64 = 2.0;

@@ -187,6 +187,20 @@ pub fn engrave_front(solid: Solid, text: &str, at: [f64; 3], height: f64, depth:
     solid - body
 }
 
+/// `text` engraved `depth` deep into the face z = `at[2]` of `solid` (centred on `at`, read
+/// from −y), and the body that fills the engraving exactly, its top flush with the face: the
+/// pair to print the text in a second colour. The body is empty for a text without ink.
+pub fn inlay(solid: Solid, text: &str, at: [f64; 3], height: f64, depth: f64) -> (Solid, Solid) {
+    let ink = text_solid(text, height, stroke_for(height), depth + OVERSHOOT);
+    if ink.is_empty() {
+        return (solid, Solid::empty());
+    }
+    let ink = ink.translate(Vec3::new(at[0] - text_width(text, height) / 2.0, at[1] - height / 2.0, at[2] - depth));
+    // What the engraving takes out of the solid is exactly what fills it.
+    let fill = &solid ^ &ink;
+    (solid - ink, fill)
+}
+
 /// [`engrave`] with the text turned counter-clockwise about `at` by `quarter_turns` × 90°.
 pub fn engrave_turned(solid: Solid, text: &str, at: [f64; 3], height: f64, depth: f64, quarter_turns: u32) -> Solid {
     let body = text_solid(text, height, stroke_for(height), depth + OVERSHOOT);

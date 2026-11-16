@@ -189,7 +189,13 @@ fn with_options(mut name: String, b: &BinSpec) -> String {
 
 pub fn lid(l: &LidSpec) -> String {
     let [gx, gy] = l.cells;
-    format!("deckel_{gx}x{gy}{}.stl", if l.clicks { "_klick" } else { "" })
+    let text = l.label.as_deref().map(slug).filter(|s| !s.is_empty()).map(|s| format!("_{s}")).unwrap_or_default();
+    format!("deckel_{gx}x{gy}{}{text}.stl", if l.clicks { "_klick" } else { "" })
+}
+
+/// The file of the body that fills a part's engraving: `<part>_schrift.stl`.
+pub fn inlay(part: &str) -> String {
+    format!("{}_schrift.stl", part.strip_suffix(".stl").unwrap_or(part))
 }
 
 pub fn holder(h: &HolderSpec) -> String {

@@ -72,11 +72,15 @@ pub struct LidSpec {
     /// The plate's thickness.
     pub thickness: f64,
     pub clicks: bool,
+    /// Engraved into the top, read from the front, with a second body that fills the engraving
+    /// for printing it in another colour.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 impl Default for LidSpec {
     fn default() -> Self {
-        LidSpec { cells: [1, 1], thickness: 2.0, clicks: true }
+        LidSpec { cells: [1, 1], thickness: 2.0, clicks: true, label: None }
     }
 }
 
@@ -1480,11 +1484,20 @@ pub struct Placement {
     /// A lid for this bin is printed too.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub lid: bool,
+    /// Written on the lid; without it the lid takes the bin's engraving (`label_text`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lid_label: Option<String>,
 }
 
 impl Placement {
     pub fn bin(x: u32, y: u32, bin: BinSpec) -> Self {
-        Placement { x, y, bin, holder: None, edges: EdgeUse::default(), label: None, lid: false }
+        Placement { x, y, bin, holder: None, edges: EdgeUse::default(), label: None, lid: false, lid_label: None }
+    }
+
+    /// What its lid says: its own text, else the bin's engraving; `None` when both are empty.
+    pub fn lid_text(&self) -> Option<String> {
+        let text = |t: &Option<String>| t.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned);
+        text(&self.lid_label).or_else(|| text(&self.bin.label_text))
     }
 
     /// Footprint in cells.
