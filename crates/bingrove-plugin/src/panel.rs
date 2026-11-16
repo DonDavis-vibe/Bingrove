@@ -2770,6 +2770,8 @@ impl GuestPanel for DrawerPanel {
                     height: Some(320.0),
                     bed: s.selected_part.map(|_| [s.project.bed.x as f32, s.project.bed.y as f32]),
                     frame,
+                    paint: None,
+                    overlay: None,
                 });
                 if s.preview_job.is_some() {
                     let (fraction, what) = s.preview_progress.clone().unwrap_or_default();

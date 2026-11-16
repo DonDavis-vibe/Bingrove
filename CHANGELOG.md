@@ -1,7 +1,15 @@
 # Changelog
 
 Bingrove is a Meshgrove plugin: a release is one `bingrove.wasm`, installed under *Settings →
-Plugins*. It needs a Meshgrove with the plugin system (0.8.0 or newer).
+Plugins*. It needs a Meshgrove with the plugin system: 0.9.0 or newer from Bingrove 0.6 on,
+0.8.0 or newer before.
+
+## Unreleased
+
+**Needs Meshgrove 0.9.0** (plugin API 0.2); Meshgrove 0.8 refuses it with "update Meshgrove".
+Bingrove 0.5 keeps running on 0.8.
+
+- Built against Meshgrove 0.9.0's plugin interface.
 
 ## 0.5.0 – 2026-11-09
 

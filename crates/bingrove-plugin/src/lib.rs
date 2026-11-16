@@ -233,7 +233,7 @@ pub(crate) fn bundle(plan: &Plan, report: &export::ExportReport, lists: ListMode
             FileKind::Bed => vec!["Druckbett".into()],
             _ => vec![],
         };
-        out.files.push(BundleFile { path: f.path.clone(), tags, note });
+        out.files.push(BundleFile { path: f.path.clone(), tags, note, ..BundleFile::default() });
     }
     let items = |kind: FileKind| -> Vec<BundleItem> {
         report
@@ -333,7 +333,11 @@ impl Guest for Bingrove {
             homepage: Some("https://github.com/DonDavis-vibe/Bingrove".into()),
             permissions: vec![Permission::AiTools, Permission::Bundles, Permission::LibraryRead],
             panels: vec![PanelDef { id: "drawer".into(), title: "Bingrove".into() }],
-            file_types: vec![FileType { pattern: "*.gridfinity.json".into(), description: "A Bingrove drawer".into() }],
+            file_types: vec![FileType {
+                pattern: "*.gridfinity.json".into(),
+                description: "A Bingrove drawer".into(),
+                ..FileType::default()
+            }],
             memory_mb: Some(2048),
             ..Manifest::default()
         })
@@ -475,13 +479,14 @@ pub(crate) fn calibration(profile: &Profile, name: &str) -> Result<(Bundle, Valu
             bingrove_core::geom::calibration::FIT_GAPS.len()
         )),
         folder: Some("Gridfinity/Kalibrierung".into()),
-        files: files.iter().map(|f| BundleFile { path: f.clone(), tags: vec![], note: None }).collect(),
+        files: files.iter().map(|f| BundleFile { path: f.clone(), ..BundleFile::default() }).collect(),
         tags: vec!["Gridfinity".into(), "Bingrove".into(), "Kalibrierung".into()],
         lists: vec![BundleList {
             name: list,
             kind: ListKind::Print,
             items: files.iter().map(|f| BundleItem { path: f.clone(), quantity: 1 }).collect(),
         }],
+        ..Bundle::default()
     };
     let result = json!({"files": files, "profile": profile});
     Ok((bundle, result))

@@ -67,9 +67,8 @@ face, so their pockets open upwards while printing.
 
 ## Install
 
-Bingrove needs Meshgrove **0.8.0 or newer**. Use 0.8.2 or newer: number fields there take a value
-only after Enter, table columns can be widened, and the panel shows whether your files really
-reached the library.
+Bingrove needs Meshgrove **0.9.0 or newer** (plugin API 0.2). Bingrove 0.5 and older also run
+on Meshgrove 0.8.
 
 1. Download `bingrove.wasm` and `bingrove.wasm.sha256` from the
    [releases](https://github.com/DonDavis-vibe/Bingrove/releases) and check the download:
@@ -99,7 +98,7 @@ The panel has three parts:
   compartments, label shelf, scoop, engraving, holder kind and the holder's own sizes.
 - **Right**, the 3D preview and the parts list. Round the assembly stands, in blue, the space you
   plan for: the inside of the drawer, the surface with the room above it, the wall with the room
-  in front of it. Where the plate or bins stick out it turns red (from Meshgrove 0.9.0 on). A
+  in front of it. Where the plate or bins stick out it turns red. A
   click on a part shows it on the print bed, with its full name and exact size underneath.
 
 **Generate + print list** writes everything to `Gridfinity/<name>` in the library and makes two

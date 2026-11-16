@@ -68,9 +68,8 @@ drucken auf ihrer Unterseite liegend, ihre Taschen öffnen sich beim Druck also 
 
 ## Installieren
 
-Bingrove braucht Meshgrove **0.8.0 oder neuer**. Nimm 0.8.2 oder neuer: Dort übernehmen
-Zahlenfelder den Wert erst nach Enter, Tabellenspalten lassen sich aufziehen, und das Panel zeigt,
-ob deine Dateien wirklich in der Bibliothek angekommen sind.
+Bingrove braucht Meshgrove **0.9.0 oder neuer** (Plugin-API 0.2). Bingrove 0.5 und älter laufen
+auch mit Meshgrove 0.8.
 
 1. `bingrove.wasm` und `bingrove.wasm.sha256` von den
    [Releases](https://github.com/DonDavis-vibe/Bingrove/releases) laden und den Download
@@ -103,7 +102,7 @@ Das Panel hat drei Teile:
   und die eigenen Maße des Halters.
 - **Rechts** die 3D-Vorschau und die Teileliste. Um den Zusammenbau steht blau der Raum, für den
   du planst: die Schublade innen, die Fläche mit dem Platz darüber, die Wand mit dem Platz davor.
-  Wo Platte oder Bins herausragen, wird er rot (ab Meshgrove 0.9.0). Ein Klick auf ein Teil zeigt
+  Wo Platte oder Bins herausragen, wird er rot. Ein Klick auf ein Teil zeigt
   es auf dem Druckbett, darunter seinen vollen Namen und die genauen Maße.
 
 **Generieren + Druckliste** schreibt alles nach `Gridfinity/<Name>` in die Bibliothek und legt
