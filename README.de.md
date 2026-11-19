@@ -68,7 +68,8 @@ drucken auf ihrer Unterseite liegend, ihre Taschen öffnen sich beim Druck also 
 
 ## Installieren
 
-Bingrove braucht Meshgrove **0.9.0 oder neuer** (Plugin-API 0.2). Bingrove 0.5 und älter laufen
+Bingrove braucht Meshgrove **0.9.0 oder neuer** (Plugin-API 0.2); einen Bibliotheksordner zu
+wählen braucht 0.12. Bingrove 0.5 und älter laufen
 auch mit Meshgrove 0.8.
 
 1. `bingrove.wasm` und `bingrove.wasm.sha256` von den
@@ -105,10 +106,17 @@ Das Panel hat drei Teile:
   Wo Platte oder Bins herausragen, wird er rot. Ein Klick auf ein Teil zeigt
   es auf dem Druckbett, darunter seinen vollen Namen und die genauen Maße.
 
-**Generieren + Druckliste** schreibt alles nach `Gridfinity/<Name>` in die Bibliothek und legt
-zwei Drucklisten an: `<Name> – Teile` (jede STL mit Stückzahl) und `<Name> – Druckbetten` (eine
-3MF je Bett, Teile angeordnet). Ein Klick im Verlauf von Meshgrove macht es rückgängig. Die
-Projektdatei `*.gridfinity.json` öffnet sich aus der Galerie mit „Mit Bingrove öffnen“.
+**Generieren + Druckliste** schreibt alles nach `Gridfinity/<Name>` in die Import-Bibliothek und
+legt zwei Drucklisten an: `<Name> – Teile` (jede STL mit Stückzahl) und `<Name> – Druckbetten`
+(eine 3MF je Bett, Teile angeordnet). Ein Klick im Verlauf von Meshgrove macht es rückgängig.
+Die Projektdatei `*.gridfinity.json` öffnet sich aus der Galerie mit „Mit Bingrove öffnen“.
+**Ordner wählen …** über den Knöpfen sucht mit Meshgroves eigenem Ordnerwähler eine andere
+Bibliothek und einen Ordner aus (ab Meshgrove 0.12; die Dateien kommen dann in einen Ordner mit
+dem Projektnamen darunter, × geht zurück).
+
+**Als ZIP speichern …** packt dieselben Dateien stattdessen in eine ZIP, die du mit dem
+Speichern-Dialog des Systems ablegst, wo du willst, mit einer `druckliste.txt` statt der
+Drucklisten. In die Bibliothek kommt dabei nichts.
 
 ## Was entsteht
 

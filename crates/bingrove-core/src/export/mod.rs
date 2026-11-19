@@ -220,6 +220,56 @@ pub fn export(
     Ok(ExportReport { files, beds })
 }
 
+/// The print list as text, for files that leave the library: every part with how often to
+/// print it and its size, the text bodies with the part they belong to, then the beds.
+pub fn print_list(plan: &Plan, report: &ExportReport) -> String {
+    use std::fmt::Write as _;
+    let mut x = format!("Bingrove – {}\n\nTeile ({} Stück zu drucken):\n", plan.name, plan.part_count());
+    for f in &report.files {
+        match f.kind {
+            FileKind::Part => {
+                let size = plan.parts.iter().find(|p| p.name == f.path).map(|p| p.size).unwrap_or_default();
+                let _ = writeln!(
+                    x,
+                    "  {:>3} ×  {}  ({:.1} × {:.1} × {:.1} mm)",
+                    f.quantity, f.path, size[0], size[1], size[2]
+                );
+            }
+            FileKind::Inlay => {
+                let part = f.path.strip_suffix("_schrift.stl").map(|s| format!("{s}.stl")).unwrap_or_default();
+                let _ =
+                    writeln!(x, "        {}  (Schrift zu {part}: als Teil desselben Objekts in zweiter Farbe)", f.path);
+            }
+            _ => {}
+        }
+    }
+    let beds: Vec<&ExportedFile> = report.files.iter().filter(|f| f.kind == FileKind::Bed).collect();
+    if !beds.is_empty() {
+        let _ = writeln!(x, "\nDruckbetten ({}, Teile fertig angeordnet):", beds.len());
+        for f in beds {
+            let _ = writeln!(x, "    1 ×  {}", f.path);
+        }
+    }
+    x
+}
+
+/// Everything `export` wrote to `out`, as one ZIP: the files under `top/` with the paths they
+/// have below `out`, and `top/druckliste.txt`.
+pub fn zip(out: &Path, plan: &Plan, report: &ExportReport, top: &str) -> Result<Vec<u8>, ExportError> {
+    use std::io::Write as _;
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let mut add = |name: &str, bytes: &[u8]| -> std::io::Result<()> {
+        zip.start_file(format!("{top}/{name}"), stored).map_err(std::io::Error::other)?;
+        zip.write_all(bytes)
+    };
+    for f in &report.files {
+        add(&f.path, &std::fs::read(out.join(&f.path))?)?;
+    }
+    add("druckliste.txt", print_list(plan, report).as_bytes())?;
+    Ok(zip.finish().map_err(std::io::Error::other)?.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

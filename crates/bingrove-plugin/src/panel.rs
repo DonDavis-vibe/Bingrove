@@ -56,6 +56,9 @@ pub(crate) struct PanelState {
     pub mix_edit: Option<(Mix, String)>,
     /// The left column's tab: 0 Projekt, 1 Belegung, 2 Ausgabe.
     pub tab: usize,
+    /// The library folder the user chose for the files, as Meshgrove's token and its label
+    /// ("Werkstatt/Boxen"); none: `Gridfinity/<name>` in the import library.
+    pub target: Option<(String, String)>,
 }
 
 impl Default for PanelState {
@@ -76,6 +79,7 @@ impl Default for PanelState {
             bins_wanted: 0,
             mix_edit: None,
             tab: 0,
+            target: None,
         }
     }
 }
@@ -620,6 +624,18 @@ impl DrawerPanel {
             s.message = Some((Level::Error, error.clone()));
             return vec![Effect::Toast { text: error, level: Level::Error }];
         }
+        // A ZIP is offered for saving where the user likes; it stays out of the library.
+        if let Some(r) = result.as_ref().filter(|r| r["zip"].is_string()) {
+            let (path, name) = (r["zip"].as_str().unwrap_or_default(), r["name"].as_str().unwrap_or("bingrove.zip"));
+            s.message = Some((
+                Level::Info,
+                tf!(
+                    "{name} ist fertig: im Dialog speichern, wohin du willst.",
+                    "{name} is ready: save it wherever you like."
+                ),
+            ));
+            return vec![Effect::SaveFile { path: path.into(), name: name.into() }];
+        }
         let bundle = result.map_or(Value::Null, |r| r["bundle"].clone());
         match serde_json::from_value::<meshgrove_plugin_api::Bundle>(bundle) {
             Ok(bundle) => {
@@ -640,8 +656,53 @@ impl DrawerPanel {
             ui::BundleOutcome::Refused => (Level::Warn, BundleOutcome::Refused),
             ui::BundleOutcome::Failed { error } => (Level::Error, BundleOutcome::Failed { error }),
         };
+        let failed = matches!(outcome, BundleOutcome::Failed { .. });
         let text = BundleFinished { title, outcome }.text(&guest::info().language);
-        self.state.borrow_mut().message = Some((level, text));
+        let mut s = self.state.borrow_mut();
+        // A folder Meshgrove no longer takes (gone, read-only, an old token) is forgotten, so
+        // the next run goes to the import library instead of failing again.
+        let text = match s.target.take() {
+            Some(_) if failed => {
+                tf!("{text} Das gewählte Ziel ist zurückgesetzt.", "{text} The chosen folder has been reset.")
+            }
+            target => {
+                s.target = target;
+                text
+            }
+        };
+        s.message = Some((level, text));
+    }
+
+    /// Where "Generate + print list" puts the files, and (where Meshgrove has its folder chooser)
+    /// the buttons to choose another folder or go back to the import library.
+    fn target_row(&self, s: &PanelState, plan: &Plan) -> Node {
+        let small = |text: String| Node::Label { text, style: TextStyle::Small };
+        let picks = crate::host_picks_folders();
+        let mut row = vec![small(match s.target.as_ref().filter(|_| picks) {
+            Some((_, label)) => tf!("Ziel: {label} / {}", "Destination: {label} / {}", plan.name),
+            None => {
+                tf!("Ziel: Import-Bibliothek / Gridfinity/{}", "Destination: import library / Gridfinity/{}", plan.name)
+            }
+        })];
+        if picks {
+            row.push(Node::Button {
+                id: "pick_target".into(),
+                label: tr("Ordner wählen …", "Choose folder …").into(),
+                primary: false,
+                enabled: !s.busy,
+            });
+            if s.target.is_some() {
+                row.push(Node::Button {
+                    id: "clear_target".into(),
+                    label: "×".into(),
+                    primary: false,
+                    enabled: !s.busy,
+                });
+            }
+        } else {
+            row.push(small(tr("(Ordner wählen ab Meshgrove 0.12)", "(choosing a folder needs Meshgrove 0.12)").into()));
+        }
+        Node::row(row)
     }
 
     fn form(&self, s: &PanelState, plan: Option<&Plan>) -> Node {
@@ -2744,6 +2805,7 @@ impl GuestPanel for DrawerPanel {
                 for w in &p.warnings {
                     left.push(Node::Notice { level: Level::Warn, text: w.text(&language) });
                 }
+                left.push(self.target_row(&s, p));
                 left.push(Node::row(vec![
                     Node::Button {
                         id: "auto".into(),
@@ -2755,6 +2817,12 @@ impl GuestPanel for DrawerPanel {
                         id: "generate".into(),
                         label: tr("Generieren + Druckliste", "Generate + print list").into(),
                         primary: true,
+                        enabled: !s.busy,
+                    },
+                    Node::Button {
+                        id: "generate_zip".into(),
+                        label: tr("Als ZIP speichern …", "Save as ZIP …").into(),
+                        primary: false,
                         enabled: !s.busy,
                     },
                     Node::Button {
@@ -3020,7 +3088,8 @@ impl GuestPanel for DrawerPanel {
             Event::Click { id } if id == "calibrate" => {
                 let mut s = self.state.borrow_mut();
                 s.busy = true;
-                let params = json!({"profile": s.project.profile, "name": s.project.drawer.name});
+                let target = s.target.as_ref().filter(|_| crate::host_picks_folders()).map(|t| t.0.clone());
+                let params = json!({"profile": s.project.profile, "name": s.project.drawer.name, "target": target});
                 vec![Effect::StartJobs {
                     jobs: vec![JobSpec {
                         id: "calibration".into(),
@@ -3030,11 +3099,25 @@ impl GuestPanel for DrawerPanel {
                     }],
                 }]
             }
-            Event::Click { id } if id == "generate" => {
+            Event::Click { id } if id == "pick_target" => vec![Effect::PickFolder {
+                id: "target".into(),
+                title: Some(tr("Wohin sollen die Dateien?", "Where should the files go?").into()),
+            }],
+            Event::Click { id } if id == "clear_target" => {
+                self.state.borrow_mut().target = None;
+                Vec::new()
+            }
+            Event::FolderPicked { id, target, label } if id == "target" => {
+                self.state.borrow_mut().target = Some((target, label));
+                Vec::new()
+            }
+            Event::Click { id } if id == "generate" || id == "generate_zip" => {
                 self.adopt_plan();
                 let mut s = self.state.borrow_mut();
                 s.busy = true;
-                let params = json!({"project": s.project, "lists": s.lists});
+                let zip = id == "generate_zip";
+                let target = s.target.as_ref().filter(|_| !zip && crate::host_picks_folders()).map(|t| t.0.clone());
+                let params = json!({"project": s.project, "lists": s.lists, "zip": zip, "target": target});
                 vec![Effect::StartJobs {
                     jobs: vec![JobSpec {
                         id: "generate".into(),

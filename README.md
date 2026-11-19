@@ -67,7 +67,8 @@ face, so their pockets open upwards while printing.
 
 ## Install
 
-Bingrove needs Meshgrove **0.9.0 or newer** (plugin API 0.2). Bingrove 0.5 and older also run
+Bingrove needs Meshgrove **0.9.0 or newer** (plugin API 0.2); choosing a library folder needs
+0.12. Bingrove 0.5 and older also run
 on Meshgrove 0.8.
 
 1. Download `bingrove.wasm` and `bingrove.wasm.sha256` from the
@@ -101,10 +102,16 @@ The panel has three parts:
   in front of it. Where the plate or bins stick out it turns red. A
   click on a part shows it on the print bed, with its full name and exact size underneath.
 
-**Generate + print list** writes everything to `Gridfinity/<name>` in the library and makes two
-print lists: `<name> – Teile` (each STL with its quantity) and `<name> – Druckbetten` (a 3MF per
-bed, parts arranged). One click in Meshgrove's history undoes it. The project file
-`*.gridfinity.json` reopens with "Mit Bingrove öffnen" from the gallery.
+**Generate + print list** writes everything to `Gridfinity/<name>` in the import library and
+makes two print lists: `<name> – Teile` (each STL with its quantity) and `<name> – Druckbetten`
+(a 3MF per bed, parts arranged). One click in Meshgrove's history undoes it. The project file
+`*.gridfinity.json` reopens with "Mit Bingrove öffnen" from the gallery. **Choose folder …**
+above the buttons picks another library and folder with Meshgrove's own chooser (from Meshgrove
+0.12; the files then go into a folder named after the project below it, × goes back).
+
+**Save as ZIP …** puts the same files into one ZIP instead, saved wherever you like with the
+system's dialog, with a `druckliste.txt` in place of the print lists. Nothing goes into the
+library.
 
 ## What it makes
 

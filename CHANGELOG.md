@@ -9,7 +9,14 @@ Plugins*. It needs a Meshgrove with the plugin system: 0.9.0 or newer from Bingr
 **Needs Meshgrove 0.9.0** (plugin API 0.2); Meshgrove 0.8 refuses it with "update Meshgrove".
 Bingrove 0.5 keeps running on 0.8.
 
-- Built against Meshgrove 0.9.0's plugin interface.
+- Built against Meshgrove 0.12's plugin interface; the manifest still names API 0.2, so it runs
+  on Meshgrove 0.9 and newer, and uses what is newer only where the host has it.
+- Choose where the files go: **Choose folder …** opens Meshgrove's folder chooser (any library,
+  any folder, from Meshgrove 0.12); the files land in a folder named after the project below it.
+  Without a choice, or on an older Meshgrove, they go to `Gridfinity/<name>` in the import
+  library as before. A folder Meshgrove no longer takes is forgotten after the failed run.
+- **Save as ZIP …**: everything in one ZIP, saved anywhere with the system's dialog, with a
+  `druckliste.txt` (parts with quantities, text bodies, beds) instead of the print lists.
 - Text on lids (`lid_label`, *Lid text* in the panel; empty takes the bin's engraving): engraved
   0.6 mm into the top and filled flush by a second body, `…_schrift.stl`, for a second colour.
   On the print beds a labelled lid is one object of two parts, "Körper" and "Schrift", with the

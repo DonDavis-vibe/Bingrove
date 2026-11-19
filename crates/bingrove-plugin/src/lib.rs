@@ -20,8 +20,7 @@ use bingrove_core::profile::Profile;
 use meshgrove_plugin_api::guest::{self, Guest, PluginError, ToolOutput};
 use meshgrove_plugin_api::ui::Effect;
 use meshgrove_plugin_api::{
-    API_VERSION, Bundle, BundleFile, BundleItem, BundleList, FileType, ListKind, Manifest, PanelDef, Permission,
-    ToolDef,
+    Bundle, BundleFile, BundleItem, BundleList, FileType, ListKind, Manifest, PanelDef, Permission, ToolDef,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -183,15 +182,21 @@ pub(crate) fn plan_result(plan: &Plan) -> Value {
     })
 }
 
-/// Runs the export below `/out` and describes it as a bundle.
-pub(crate) fn generate(project: &DrawerProject, lists: ListMode) -> Result<(Plan, Bundle, Value), PluginError> {
+/// Runs the export into `out` (below `/out`) and describes it as a bundle for the library,
+/// into the folder `target` the user chose (a panel's token) or the import library.
+pub(crate) fn generate(
+    project: &DrawerProject,
+    lists: ListMode,
+    out: &std::path::Path,
+    target: Option<&str>,
+) -> Result<(Plan, export::ExportReport, Bundle, Value), PluginError> {
     let plan = plan(project).map_err(|e| PluginError::Invalid(e.to_string()))?;
     let opts = ExportOptions { assembly: false, ..ExportOptions::default() };
-    let report = export::export(&plan, project, std::path::Path::new("/out"), opts, &|done, total, what| {
+    let report = export::export(&plan, project, out, opts, &|done, total, what| {
         guest::host::progress(done as f32 / total.max(1) as f32, what);
     })
     .map_err(|e| PluginError::Failed(e.to_string()))?;
-    let bundle = bundle(&plan, &report, lists);
+    let bundle = bundle(&plan, &report, lists, target);
     let result = json!({
         "summary": bundle.summary,
         "files": report.files,
@@ -199,10 +204,22 @@ pub(crate) fn generate(project: &DrawerProject, lists: ListMode) -> Result<(Plan
         "warnings": plan.warnings,
         "text": bingrove_core::text::ascii_plan(&plan),
     });
-    Ok((plan, bundle, result))
+    Ok((plan, report, bundle, result))
 }
 
-pub(crate) fn bundle(plan: &Plan, report: &export::ExportReport, lists: ListMode) -> Bundle {
+/// Where a bundle goes: below the folder the user chose (`target`, a token from Meshgrove's
+/// chooser) in a folder of its own named `name`, or `Gridfinity/<name>` in the import library.
+fn place(bundle: &mut Bundle, name: &str, target: Option<&str>) {
+    match target {
+        Some(token) => {
+            bundle.target = Some(token.to_owned());
+            bundle.folder = Some(name.to_owned());
+        }
+        None => bundle.folder = Some(format!("Gridfinity/{name}")),
+    }
+}
+
+pub(crate) fn bundle(plan: &Plan, report: &export::ExportReport, lists: ListMode, target: Option<&str>) -> Bundle {
     let name = &plan.name;
     let mut out = Bundle {
         title: format!("Gridfinity {name}"),
@@ -214,10 +231,10 @@ pub(crate) fn bundle(plan: &Plan, report: &export::ExportReport, lists: ListMode
             plan.grid.plate[0] + 1.0,
             plan.grid.plate[1] + 1.0
         )),
-        folder: Some(format!("Gridfinity/{name}")),
         tags: vec!["Gridfinity".into(), "Bingrove".into()],
         ..Bundle::default()
     };
+    place(&mut out, name, target);
     for f in &report.files {
         let note = match f.kind {
             FileKind::Part => plan
@@ -332,7 +349,9 @@ impl Guest for Bingrove {
             id: "bingrove".into(),
             name: "Bingrove".into(),
             version: env!("CARGO_PKG_VERSION").into(),
-            api: API_VERSION.into(),
+            // Built with API 0.3 for the folder chooser, which is used only where the host has
+            // it (`host_picks_folders`): the plugin still runs on Meshgrove 0.9 and 0.10.
+            api: MANIFEST_API.into(),
             description: "Gridfinity drawer inserts that use the whole drawer: baseplate, bins and edge bins planned from the drawer's size, generated as STL and 3MF, put on print lists.".into(),
             authors: vec!["Davis (German Redneck Engineering)".into()],
             homepage: Some("https://github.com/DonDavis-vibe/Bingrove".into()),
@@ -406,7 +425,8 @@ impl Guest for Bingrove {
             "generate" => {
                 let args: DrawerArgs = guest::parse(&args)?;
                 let project = args.project()?;
-                let (_, bundle, result) = generate(&project, args.lists)?;
+                // A tool's bundle has no folder chosen by the user: it goes to the import library.
+                let (_, _, bundle, result) = generate(&project, args.lists, std::path::Path::new("/out"), None)?;
                 Ok(guest::tool_output(&result, Some(&bundle)))
             }
             _ => Err(PluginError::Invalid(format!("no tool {name:?}"))),
@@ -421,10 +441,27 @@ impl Guest for Bingrove {
                     project: DrawerProject,
                     #[serde(default)]
                     lists: ListMode,
+                    /// Everything as one ZIP to save anywhere, instead of into the library.
+                    #[serde(default)]
+                    zip: bool,
+                    #[serde(default)]
+                    target: Option<String>,
                 }
                 let p: Params = guest::parse(&params)?;
-                let (_, bundle, result) = generate(&p.project, p.lists)?;
-                Ok(guest::json(&json!({"bundle": bundle, "result": result})))
+                if !p.zip {
+                    let (_, _, bundle, result) =
+                        generate(&p.project, p.lists, std::path::Path::new("/out"), p.target.as_deref())?;
+                    return Ok(guest::json(&json!({"bundle": bundle, "result": result})));
+                }
+                // Into a folder of its own, emptied first, so nothing of an earlier run comes along.
+                let dir = std::path::Path::new("/out/zip");
+                let _ = std::fs::remove_dir_all(dir);
+                let (plan, report, _, result) = generate(&p.project, p.lists, dir, None)?;
+                let slug = export::slug(&plan.name);
+                let bytes = export::zip(dir, &plan, &report, &slug).map_err(|e| PluginError::Failed(e.to_string()))?;
+                let path = format!("/out/{slug}.zip");
+                std::fs::write(&path, bytes)?;
+                Ok(guest::json(&json!({"zip": path, "name": format!("{slug}.zip"), "result": result})))
             }
             "calibration" => {
                 #[derive(Deserialize)]
@@ -433,9 +470,11 @@ impl Guest for Bingrove {
                     profile: Profile,
                     #[serde(default)]
                     name: String,
+                    #[serde(default)]
+                    target: Option<String>,
                 }
                 let p: Params = guest::parse(&params)?;
-                let (bundle, result) = calibration(&p.profile, &p.name)?;
+                let (bundle, result) = calibration(&p.profile, &p.name, p.target.as_deref())?;
                 Ok(guest::json(&json!({"bundle": bundle, "result": result})))
             }
             "preview" => {
@@ -463,7 +502,7 @@ impl Guest for Bingrove {
 }
 
 /// Writes the calibration pieces below `/out/Kalibrierung` and describes them as a bundle.
-pub(crate) fn calibration(profile: &Profile, name: &str) -> Result<(Bundle, Value), PluginError> {
+pub(crate) fn calibration(profile: &Profile, name: &str, target: Option<&str>) -> Result<(Bundle, Value), PluginError> {
     let dir = std::path::Path::new("/out");
     let parts = bingrove_core::geom::calibration::parts(profile);
     let mut files = Vec::new();
@@ -475,7 +514,7 @@ pub(crate) fn calibration(profile: &Profile, name: &str) -> Result<(Bundle, Valu
     }
     let list =
         if name.trim().is_empty() { "Bingrove Kalibrierung".to_string() } else { format!("{name} – Kalibrierung") };
-    let bundle = Bundle {
+    let mut bundle = Bundle {
         title: "Bingrove Kalibrierung".into(),
         summary: Some(format!(
             "Magnetloch-Leiter {:.1}–{:.1} mm und Passungstest mit {} Bins",
@@ -483,7 +522,6 @@ pub(crate) fn calibration(profile: &Profile, name: &str) -> Result<(Bundle, Valu
             profile.magnet.d + 0.3,
             bingrove_core::geom::calibration::FIT_GAPS.len()
         )),
-        folder: Some("Gridfinity/Kalibrierung".into()),
         files: files.iter().map(|f| BundleFile { path: f.clone(), ..BundleFile::default() }).collect(),
         tags: vec!["Gridfinity".into(), "Bingrove".into(), "Kalibrierung".into()],
         lists: vec![BundleList {
@@ -493,8 +531,27 @@ pub(crate) fn calibration(profile: &Profile, name: &str) -> Result<(Bundle, Valu
         }],
         ..Bundle::default()
     };
+    place(&mut bundle, "Kalibrierung", target);
     let result = json!({"files": files, "profile": profile});
     Ok((bundle, result))
+}
+
+/// The plugin API the manifest names: what Bingrove needs everywhere. Newer things are used
+/// only where the host speaks them.
+const MANIFEST_API: &str = "0.2.0";
+
+/// Whether Meshgrove lets the panel choose a library folder (`pick_folder`, API 0.3, Meshgrove
+/// 0.12) and puts bundles with a `target` there; older ones would skip the effect and drop the
+/// files into the import library.
+pub(crate) fn host_picks_folders() -> bool {
+    api_picks_folders(&guest::info().api)
+}
+
+/// Whether a host speaking plugin API `api` ("0.3.0") has the folder chooser.
+fn api_picks_folders(api: &str) -> bool {
+    let mut parts = api.split('.').map(|p| p.trim().parse::<u32>().unwrap_or(0));
+    let (major, minor) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
+    major > 0 || minor >= 3
 }
 
 /// A fresh drawer for the panel.
@@ -521,5 +578,33 @@ mod tests {
             println!("{}: {} bytes", t.name, t.input_schema.to_string().len());
         }
         meshgrove_plugin_api::manifest::check_tools("bingrove", &tools).unwrap();
+    }
+
+    /// The manifest names API 0.2, so Meshgrove 0.9 and 0.10 still load the plugin; the folder
+    /// chooser of 0.3 is used only where the host has it.
+    #[test]
+    fn the_manifest_asks_for_api_0_2() {
+        let manifest: meshgrove_plugin_api::Manifest = serde_json::from_str(&super::Bingrove::manifest()).unwrap();
+        assert_eq!(manifest.api, "0.2.0");
+    }
+
+    #[test]
+    fn only_meshgrove_0_12_and_newer_choose_folders() {
+        for (api, picks) in
+            [("0.1.0", false), ("0.2.0", false), ("0.3.0", true), ("0.4.1", true), ("1.0.0", true), ("", false)]
+        {
+            assert_eq!(super::api_picks_folders(api), picks, "{api:?}");
+        }
+    }
+
+    /// A bundle goes below the folder the user chose, in a folder of its own, or into
+    /// Gridfinity/<name> in the import library.
+    #[test]
+    fn a_bundle_goes_where_the_user_chose() {
+        let mut b = meshgrove_plugin_api::Bundle::default();
+        super::place(&mut b, "Werkbank", None);
+        assert_eq!((b.target.as_deref(), b.folder.as_deref()), (None, Some("Gridfinity/Werkbank")));
+        super::place(&mut b, "Werkbank", Some("3f9a0c11d2e4b567"));
+        assert_eq!((b.target.as_deref(), b.folder.as_deref()), (Some("3f9a0c11d2e4b567"), Some("Werkbank")));
     }
 }

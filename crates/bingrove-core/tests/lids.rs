@@ -118,3 +118,29 @@ fn a_lid_with_text_exports_its_inlay_beside_it_and_as_a_part_on_the_bed() {
     assert!(settings.contains("value=\"Schrift\"") && settings.contains("key=\"extruder\" value=\"2\""), "{settings}");
     let _ = std::fs::remove_dir_all(&out);
 }
+
+#[test]
+fn a_zip_holds_every_file_under_one_folder_and_a_print_list() {
+    use bingrove_core::export::zip;
+    let project = project(vec![lidded(0, 0, None, Some("Kabel")), lidded(0, 1, None, None)]);
+    let plan = plan(&project).unwrap();
+    let out = std::env::temp_dir().join(format!("bingrove-zip-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&out);
+    let report = export(&plan, &project, &out, ExportOptions::default(), &|_, _, _| {}).unwrap();
+    let bytes = zip(&out, &plan, &report, "ablage").unwrap();
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    // Every file of the report, with the same bytes, under ablage/, and the print list.
+    assert_eq!(archive.len(), report.files.len() + 1);
+    for f in &report.files {
+        let mut inside = Vec::new();
+        archive.by_name(&format!("ablage/{}", f.path)).unwrap().read_to_end(&mut inside).unwrap();
+        assert_eq!(inside, std::fs::read(out.join(&f.path)).unwrap(), "{}", f.path);
+    }
+    let mut list = String::new();
+    archive.by_name("ablage/druckliste.txt").unwrap().read_to_string(&mut list).unwrap();
+    assert!(list.contains(&format!("({} Stück zu drucken)", plan.part_count())), "{list}");
+    assert!(list.contains("  1 ×  deckel_2x1_klick_Kabel.stl"), "{list}");
+    assert!(list.contains("deckel_2x1_klick_Kabel_schrift.stl  (Schrift zu deckel_2x1_klick_Kabel.stl"), "{list}");
+    assert!(list.contains("Druckbetten (") && list.contains("Druckbetten/ablage_bett_01.3mf"), "{list}");
+    let _ = std::fs::remove_dir_all(&out);
+}
